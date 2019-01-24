@@ -50,4 +50,4 @@ class Auction:
         return self.type
     
     def getJson(self):
-        return json.dumps({ 'AuctionId' : self.auctionId , 'Blockchain' : self.blockToJson() })
+        return { 'AuctionId' : self.auctionId , 'Blockchain' : self.blockToJson() }
