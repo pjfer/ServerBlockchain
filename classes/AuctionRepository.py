@@ -11,9 +11,10 @@ class AuctionRepository:
     def __init__(self):
         self.activeAuctions = {} #contém os auctions ativos {id, auction}
         self.finishedAuctions = {} #contém os auctions acabados {id, auction}
-        self.key = serialization.load_pem_private_key( open("../certs_servers/AuctionManagerKey.pem", "rb").read(), password = None,   backend=default_backend())
+        self.key = serialization.load_pem_private_key( open("../certs_servers/AuctionRepositoryKey.pem", "rb").read(), password = None,   backend=default_backend())
 
         self.padding = padding.PSS(mgf =padding.MGF1(hashes.SHA256()), salt_length = padding.PSS.MAX_LENGTH)
+        self.receiptId = 0
 
     def showActvAuct(self):
         auctions = {}
@@ -42,6 +43,7 @@ class AuctionRepository:
             
     def placeBid(self, auctionId, bid):
         recvTime = datetime.now()
+        self.receiptId += 1
         if auctionId in self.activeAuctions:
 
             if self.verifyChallenge(auctionId, bid):
@@ -67,25 +69,25 @@ class AuctionRepository:
                 #Cria a mensagem de resposta (com o receipt).
                 text_to_sign = (str(recvTime) + str(sendTime) + "True" + str(self.activeAuctions[auctionId].getLastPosition())).encode()
                 ass = self.key.sign(text_to_sign, self.padding, hashes.SHA256())
-                return json.dumps({ 'Id' : 213 , 'TimestampRec' : str(recvTime), 'TimestampEnv' : str(sendTime), 'Success' : 'True', 'Pos' : self.activeAuctions[auctionId].getLastPosition(), 'Sign' : base64.b64encode(ass).decode('utf-8') })
+                return json.dumps({ 'Id' : 213 , 'AuctionId' : auctionId, 'ReceiptId' : self.receiptId, 'TimestampRec' : str(recvTime), 'TimestampEnv' : str(sendTime), 'Success' : 'True', 'Pos' : self.activeAuctions[auctionId].getLastPosition(), 'Sign' : base64.b64encode(ass).decode('utf-8') })
 
             #Se o desafio não for comprido
             sendTime = datetime.now()
             text_to_sign = (str(recvTime) + str(sendTime) + "False").encode()
             ass = self.key.sign(text_to_sign, self.padding, hashes.SHA256())
-            return json.dumps({ 'Id' : 113, 'TimestampRec' : str(recvTime), 'TimestampEnv' : str(sendTime), 'Success' : 'False', 'Reason' : 'Wrong Answer to Challenge', 'Sign' : base64.b64encode(ass).decode('utf-8') })
+            return json.dumps({ 'Id' : 113, 'AuctionId' : auctionId, 'ReceiptId' : self.receiptId, 'TimestampRec' : str(recvTime), 'TimestampEnv' : str(sendTime), 'Success' : 'False', 'Reason' : 'Wrong Answer to Challenge', 'Sign' : base64.b64encode(ass).decode('utf-8') })
 
         #Se o Auction já tiver acabado ou não existir
         sendTime = datetime.now()
         text_to_sign = (str(recvTime) + str(sendTime) + "False").encode()
         ass = self.key.sign(text_to_sign, self.padding, hashes.SHA256())
-        return json.dumps({ 'TimestampRec' : str(recvTime), 'TimestampEnv' : str(sendTime), 'Success' : 'False', 'Reason' : 'Auction as ended or does not exist', 'Sign' : base64.b64encode(ass).decode('utf-8') })
+        return json.dumps({'Id' : 113, 'AuctionId' : auctionId, 'ReceiptId' : self.receiptId,'TimestampRec' : str(recvTime), 'TimestampEnv' : str(sendTime), 'Success' : 'False', 'Reason' : 'Auction as ended or does not exist', 'Sign' : base64.b64encode(ass).decode('utf-8') })
 
     def getChallenge(self, auctionId):
         if auctionId in self.activeAuctions:
             challenge = self.activeAuctions[auctionId].getLastBlock().getLink()
             nhash = "SHA256"
-            dificulty = 3 #número de números iguais a 0.
+            dificulty = 2 #número de números iguais a 0.
 
             return json.dumps({ 'Id' : 214, 'Difficulty' : dificulty, 'Challenge' :  base64.b64encode(challenge).decode('utf-8'), 'Hash' : nhash })
         
@@ -119,12 +121,12 @@ class AuctionRepository:
             block = Block({'ClientKey' : clientKey, 'AuctManKeys': auctionManagerKeys} , None, link, None, assin)
             self.finishedAuctions[auctionId].addToBlockChain(block)
 
-    def createAuction(self, requester, auctionId, type, endTime, descr, verDin, encDin):
+    def createAuction(self, requester, name, auctionId, type, endTime, descr, verDin, encDin, key):
         if auctionId in self.activeAuctions or auctionId in self.finishedAuctions:
             return json.dumps({ 'Id' : 115, 'Reason' : 'Invalid AuctionId' })
         
         if requester == "AuctionManager":
-            auction = Auction(type, auctionId, endTime, descr, key)
+            auction = Auction(name, type, auctionId, endTime, descr)
             self.activeAuctions[auctionId] = auction
             digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
 
@@ -132,7 +134,7 @@ class AuctionRepository:
             previousLink = secrets.token_bytes(16)
             digest.update(previousLink) 
             link =  digest.finalize()
-            text_to_sign = json.dumps(verDin).encode() + json.dumps(encDin).encode() + link 
+            text_to_sign = json.dumps(verDin).encode() + json.dumps(encDin).encode() + link 	#Adicionar a chave pública à assinatura
             assin = self.key.sign(text_to_sign, self.padding, hashes.SHA256())
             #Cria o bloco e adiciona à blockchain
             block = Block({'VerDin' : verDin, 'EncDin': encDin, 'PubKey' : key} , None, link, None, assin)
@@ -145,12 +147,12 @@ class AuctionRepository:
         digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
         response = bid.getCriptAnswer()
         nonce = response['Nonce']
-        dif = response['Difficulty']
+        dif = 2
 
         digest.update(nonce + self.activeAuctions[auctionId].getLastBlock().getLink())
         result =  digest.finalize()
         
-        if result[0:dif] == 0 and result == response['Response']:
+        if result[0:dif] == b'0'*dif and result == response['Response']:
             return True
         else:
             return False

@@ -38,7 +38,8 @@ class Bid:
     	return self.signature
 
     def criptAnswerJson(self):
-        return json.dumps({ 'Response' : base64.b64encode(self.criptAnswer['Response']).decode('utf-8') , 'Nonce' : base64.b64encode(self.criptAnswer['Nonce']).decode('utf-8'), 'Difficulty' : self.criptAnswer['Difficulty'] })
+        return { 'Nonce' : base64.b64encode(self.criptAnswer['Nonce']).decode('utf-8'), 'Response' : base64.b64encode(self.criptAnswer['Response']).decode('utf-8'), 'Difficulty' : self.criptAnswer['Difficulty'] }
+
 
     def getJson(self):
         return json.dumps({ 'Author' : base64.b64encode(self.author).decode('utf-8'), 'Value' : base64.b64encode(self.value).decode('utf-8'), 'Timestamp' : str(self.timestamp), 'CriptAnswer' : self.criptAnswerJson(), 'Key' : base64.b64encode(self.key).decode('utf-8') , 'Signature' : base64.b64encode(self.signature).decode('utf-8') })

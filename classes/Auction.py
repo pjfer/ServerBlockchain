@@ -2,7 +2,8 @@ import Block, json
 from datetime import datetime
 
 class Auction:
-    def  __init__(self, type, auctionId, endTime, desc):
+    def  __init__(self,name, type, auctionId, endTime, desc):
+        self.name = name
         self.auctionId = auctionId
         self.endTime = endTime
         self.desc = desc
