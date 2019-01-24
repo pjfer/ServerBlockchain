@@ -42,4 +42,4 @@ class Bid:
 
 
     def getJson(self):
-        return json.dumps({ 'Author' : base64.b64encode(self.author).decode('utf-8'), 'Value' : base64.b64encode(self.value).decode('utf-8'), 'Timestamp' : str(self.timestamp), 'CriptAnswer' : self.criptAnswerJson(), 'Key' : base64.b64encode(self.key).decode('utf-8') , 'Signature' : base64.b64encode(self.signature).decode('utf-8') })
+        return { 'Author' : base64.b64encode(self.author).decode('utf-8'), 'Value' : base64.b64encode(self.value).decode('utf-8'), 'Timestamp' : str(self.timestamp), 'CriptAnswer' : self.criptAnswerJson(), 'Key' : base64.b64encode(self.key).decode('utf-8') , 'Signature' : base64.b64encode(self.signature).decode('utf-8')}
