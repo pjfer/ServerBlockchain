@@ -17,7 +17,7 @@ def doChallenge(link, difficulty):
     hashF.update(nonce + link)
     digest = hashF.finalize()
     #Compara o resultado
-    while(not a[0:difficulty] == b'0'*difficulty):
+    while(not digest[0:difficulty] == b'0'*difficulty):
         nonce = secrets.token_bytes(8)
         hashF = hashes.Hash(hashes.SHA256(), backend=default_backend())
         hashF.update(nonce + link)
