@@ -31,33 +31,36 @@ while True:
         message = json.loads(new_data)
         #FALTAAAAA
         #Tem de verificar aqui o certificado
-        pubKeyRep = x509.load_pem_x509_certificate( base64.b64decode(message['Cert']), backend = default_backend()).public_key()
+        
+
         #Descencripta a chave e a nonce a ser usada na mensagem que vai receber
-        simKeyCli = privKey.decrypt(base64.b64decode(message['Key']), encrptPadd)
-        nonceCli = privKey.decrypt(base64.b64decode(message['Nonce']), encrptPadd)
+        cert = base64.b64decode(message['Cert'])
+        simKey = privKey.decrypt(base64.b64decode(message['Key']), encrptPadd)
+        nonce = privKey.decrypt(base64.b64decode(message['Nonce']), encrptPadd)
+        aesgcm = AESGCM(simKey)
+
+        pubKeyCli = x509.load_pem_x509_certificate(cert, backend = default_backend()).public_key()
         #Verifica a assinatura dos conteúdos da mesagem recebida
-        text_to_verify =  base64.b64decode(message['Cert']) + simKeyCli + nonceCli
+        text_to_verify =  cert + simKey + nonce
         try:
-            pubKeyRep.verify(base64.b64decode(message['Assin']), text_to_verify, assinPadd, hashes.SHA256())
+            pubKeyCli.verify(base64.b64decode(message['Assin']), text_to_verify, assinPadd, hashes.SHA256())
         except Exception:
             print("Mensagem Inválida")
 
-        #Gera a chave e o nonce que vai usar para responder à próxima mensagem
-        simKey = AESGCM.generate_key(bit_length=256)
-        nonce = secrets.token_bytes(16)
+
+        #Cria o Json para enviar
+        message = json.dumps({'ACK' : "Ok",})
         
         #Gera a assinatura da mensagem que vai enviar
-        assin = privKey.sign(simKey + nonce, assinPadd, hashes.SHA256())
-
-        simKeyEnc = pubKeyRep.encrypt(simKey, encrptPadd)
-        nonceEnc = pubKeyRep.encrypt(nonce, encrptPadd)
-        #Cria o Json para enviar
-        payload = json.dumps({'Key' : base64.b64encode(simKeyEnc).decode('utf-8'), 'Nonce' : base64.b64encode(nonceEnc).decode('utf-8'), 'Assin' : base64.b64encode(assin).decode('utf-8')})
+        assin = privKey.sign(message.encode(), assinPadd, hashes.SHA256())
         
+        payload = json.dumps({'Message' : base64.b64encode(aesgcm.encrypt(nonce, message.encode(), None)).decode('utf-8'), 'Assin' : base64.b64encode(assin).decode('utf-8') })
+
         new_message = bytes('{}{}\r\n\r\n{}'.format(header, sys.getsizeof(payload), payload), 'utf-8')
         #Envia
         conn.sendall(new_message)
         
+        nonce += b'1'
         #Recebe a mensagem com o pedido a realizar
         data = conn.recv(1024)
         i = data.index(b':')
@@ -69,14 +72,12 @@ while True:
         new_data = data[idx:]
         message = json.loads(new_data)
         #Cria a chave para desencriptar o pedido
-        aesgcm = AESGCM(simKeyCli)
-        request = aesgcm.decrypt(nonceCli, base64.b64decode(message['Message']), None)
+        request = aesgcm.decrypt(nonce, base64.b64decode(message['Message']), None)
 
         #Agora faz o tratamento da mensagem que recebeu e cria a resposta
         answer = request.decode()
 
-        #Gera a chave para enviar a resposta ao pedido do cliente
-        aesgcm = AESGCM(simKey)
+        nonce += b'1'
         
         #Encripta a mensagem e adiciona-a na mensagem a ser enviada.
         answer = aesgcm.encrypt(nonce, answer.encode(), None)

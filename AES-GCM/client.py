@@ -19,11 +19,13 @@ cert = open("AuctionRepository.crt", "rb").read()
 #Gera a chave e o nonce que vai usar para enviar o pedido
 simKey = AESGCM.generate_key(bit_length=256)
 nonce = secrets.token_bytes(16)
-
+aesgcm = AESGCM(simKey)
 #Cria assinatura com o CC dos dados que vai enviar na mensagem
 text_to_sign = cert + simKey + nonce
 assin = privKey.sign(text_to_sign, assinPadd, hashes.SHA256())
+
 #Encripta os campos necessários
+#certEnc = pubKeyMan.encrypt(cert, encrptPadd)
 simKeyEnc = pubKeyMan.encrypt(simKey, encrptPadd)
 nonceEnc = pubKeyMan.encrypt(nonce, encrptPadd)
 #Cria a mensagem a Enviar
@@ -42,17 +44,18 @@ while message_size > 1024:
     data += s.recv(1024)
 new_data = data[idx:]
 message = json.loads(new_data)
-#Desencripta os campos da mensagem do Servidor e obtém a chave e o nonce que
-#este vai usar para encriptar a mensagem de resposta ao pedido.
-simKeyMan = privKey.decrypt(base64.b64decode(message['Key']), encrptPadd)
-nonceMan = privKey.decrypt(base64.b64decode(message['Nonce']), encrptPadd)
+
+respMan = aesgcm.decrypt(nonce, base64.b64decode(message['Message']), None)
 #Verifica a assinatura do Servidor
-text_to_verify = simKeyMan + nonceMan
 try:
-    pubKeyMan.verify(base64.b64decode(message['Assin']), text_to_verify, assinPadd, hashes.SHA256())
+    pubKeyMan.verify(base64.b64decode(message['Assin']), respMan, assinPadd, hashes.SHA256())
 except Exception:
     print("Mensagem Inválida")
 
+if json.loads(respMan.decode())['ACK'] != 'Ok':
+    print("Mensagem Inválida")
+
+nonce += b'1'
 #Cria a sua chave para encriptar o pedido
 aesgcm = AESGCM(simKey)
 request = json.dumps({ 'Id' : 1, 'Text' : 'Qualquer Coisa'})
@@ -64,6 +67,7 @@ message = bytes('{}{}\r\n\r\n{}'.format(header, sys.getsizeof(payload), payload)
 #Envia a mensagem
 s.sendall(message)
 
+nonce += b'1'
 #Espera a resposta do pedido
 data = s.recv(1024)
 i = data.index(b':')
@@ -75,10 +79,8 @@ while message_size > 1024:
 new_data = data[idx:]
 message = json.loads(new_data)
 
-#Cria a chave para desencriptar a resposta
-aesgcm = AESGCM(simKeyMan)
 #Desencripta
-answer = aesgcm.decrypt(nonceMan, base64.b64decode(message['Message']), None)
+answer = aesgcm.decrypt(nonce, base64.b64decode(message['Message']), None)
 
 print(json.loads(answer))
 
