@@ -18,69 +18,63 @@ cert = open("AuctionRepository.crt", "rb").read()
 
 #Gera a chave e o nonce que vai usar para enviar o pedido
 simKey = AESGCM.generate_key(bit_length=256)
-nonce = secrets.token_bytes(16)
 aesgcm = AESGCM(simKey)
 #Cria assinatura com o CC dos dados que vai enviar na mensagem
-text_to_sign = cert + simKey + nonce
+text_to_sign = cert + simKey
 assin = privKey.sign(text_to_sign, assinPadd, hashes.SHA256())
-
 #Encripta os campos necessários
-#certEnc = pubKeyMan.encrypt(cert, encrptPadd)
 simKeyEnc = pubKeyMan.encrypt(simKey, encrptPadd)
-nonceEnc = pubKeyMan.encrypt(nonce, encrptPadd)
-#Cria a mensagem a Enviar
-payload = json.dumps({'Cert' : base64.b64encode(cert).decode('utf-8'), 'Key' : base64.b64encode(simKeyEnc).decode('utf-8'), 'Nonce' : base64.b64encode(nonceEnc).decode('utf-8'), 'Assin' : base64.b64encode(assin).decode('utf-8')})
 
+#Cria a mensagem a Enviar
+payload = json.dumps({'Cert' : base64.b64encode(cert).decode('utf-8'), 'Key' : base64.b64encode(simKeyEnc).decode('utf-8'), 'Assin' : base64.b64encode(assin).decode('utf-8')})
 message = bytes('{}{}\r\n\r\n{}'.format(header, sys.getsizeof(payload), payload), 'utf-8')
 #Envia a mensagem
 s.sendall(message)
+
 #Espera a verficação do lado do servidor e a sua resposta
 data = s.recv(1024)
 i = data.index(b':')
 idx = data.index(b'{')
 message_size = int(data[i+1:idx])
-while message_size > 1024:
+while message_size > 1024 and data.decode()[-1] != "}" :
     message_size -= 1024
     data += s.recv(1024)
 new_data = data[idx:]
 message = json.loads(new_data)
-
-respMan = aesgcm.decrypt(nonce, base64.b64decode(message['Message']), None)
+decNonce = base64.b64decode(message['Nonce'])
+respMan = aesgcm.decrypt(decNonce, base64.b64decode(message['Message']), None)
 #Verifica a assinatura do Servidor
 try:
-    pubKeyMan.verify(base64.b64decode(message['Assin']), respMan, assinPadd, hashes.SHA256())
+    pubKeyMan.verify(base64.b64decode(message['Assin']), respMan + decNonce, assinPadd, hashes.SHA256())
 except Exception:
     print("Mensagem Inválida")
 
 if json.loads(respMan.decode())['ACK'] != 'Ok':
     print("Mensagem Inválida")
 
-nonce += b'1'
-#Cria a sua chave para encriptar o pedido
-aesgcm = AESGCM(simKey)
 request = json.dumps({ 'Id' : 1, 'Text' : 'Qualquer Coisa'})
 #Encripta o pedido e adiciona-o à mensagem
+nonce = secrets.token_bytes(16)
 requestEnc = aesgcm.encrypt(nonce, request.encode(), None)
-payload = json.dumps({'Message' :base64.b64encode(requestEnc).decode('utf-8')})
+payload = json.dumps({'Message' :base64.b64encode(requestEnc).decode('utf-8'), 'Nonce' : base64.b64encode(nonce).decode('utf-8')})
 
 message = bytes('{}{}\r\n\r\n{}'.format(header, sys.getsizeof(payload), payload), 'utf-8')
 #Envia a mensagem
 s.sendall(message)
-
-nonce += b'1'
 #Espera a resposta do pedido
 data = s.recv(1024)
 i = data.index(b':')
 idx = data.index(b'{')
 message_size = int(data[i+1:idx])
-while message_size > 1024:
+while message_size > 1024 and data.decode()[-1] != "}" :
     message_size -= 1024
     data += s.recv(1024)
 new_data = data[idx:]
 message = json.loads(new_data)
 
+decNonce = base64.b64decode(message['Nonce'])
 #Desencripta
-answer = aesgcm.decrypt(nonce, base64.b64decode(message['Message']), None)
+answer = aesgcm.decrypt(decNonce, base64.b64decode(message['Message']), None)
 
 print(json.loads(answer))
 
