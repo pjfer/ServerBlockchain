@@ -56,11 +56,9 @@ except Exception:
 #Cria a sua chave para encriptar o pedido
 aesgcm = AESGCM(simKey)
 request = json.dumps({ 'Id' : 1, 'Text' : 'Qualquer Coisa'})
-#Assina o pedido
-assin = privKey.sign(request.encode(), assinPadd, hashes.SHA256())
 #Encripta o pedido e adiciona-o à mensagem
 requestEnc = aesgcm.encrypt(nonce, request.encode(), None)
-payload = json.dumps({'Message' :base64.b64encode(requestEnc).decode('utf-8'), 'Assin' : base64.b64encode(assin).decode('utf-8')})
+payload = json.dumps({'Message' :base64.b64encode(requestEnc).decode('utf-8')})
 
 message = bytes('{}{}\r\n\r\n{}'.format(header, sys.getsizeof(payload), payload), 'utf-8')
 #Envia a mensagem
@@ -81,11 +79,6 @@ message = json.loads(new_data)
 aesgcm = AESGCM(simKeyMan)
 #Desencripta
 answer = aesgcm.decrypt(nonceMan, base64.b64decode(message['Message']), None)
-#Verifica a assinatura da resposta 
-try:
-    pubKeyMan.verify(base64.b64decode(message['Assin']), answer, assinPadd, hashes.SHA256())
-except Exception:
-    print("Mensagem Inválida")
 
 print(json.loads(answer))
 

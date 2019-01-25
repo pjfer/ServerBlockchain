@@ -35,7 +35,7 @@ while True:
         #Descencripta a chave e a nonce a ser usada na mensagem que vai receber
         simKeyCli = privKey.decrypt(base64.b64decode(message['Key']), encrptPadd)
         nonceCli = privKey.decrypt(base64.b64decode(message['Nonce']), encrptPadd)
-        #Verifica a assinatura dosconteúdos da mesagem recebida
+        #Verifica a assinatura dos conteúdos da mesagem recebida
         text_to_verify =  base64.b64decode(message['Cert']) + simKeyCli + nonceCli
         try:
             pubKeyRep.verify(base64.b64decode(message['Assin']), text_to_verify, assinPadd, hashes.SHA256())
@@ -71,11 +71,6 @@ while True:
         #Cria a chave para desencriptar o pedido
         aesgcm = AESGCM(simKeyCli)
         request = aesgcm.decrypt(nonceCli, base64.b64decode(message['Message']), None)
-        #Verifica a assinatura da mesagem anterior
-        try:
-            pubKeyRep.verify(base64.b64decode(message['Assin']), request, assinPadd, hashes.SHA256())
-        except Exception:
-            print("Mensagem Inválida")
 
         #Agora faz o tratamento da mensagem que recebeu e cria a resposta
         answer = request.decode()
@@ -83,11 +78,9 @@ while True:
         #Gera a chave para enviar a resposta ao pedido do cliente
         aesgcm = AESGCM(simKey)
         
-        #Cria a Assinatura da Mensagem a enviar
-        assin = privKey.sign(answer.encode(), assinPadd, hashes.SHA256())
-        #Encripta a mensagem e adiciona-a na mensagem a ser enviada assim como a assinatura.
+        #Encripta a mensagem e adiciona-a na mensagem a ser enviada.
         answer = aesgcm.encrypt(nonce, answer.encode(), None)
-        payload = json.dumps({'Message' : base64.b64encode(answer).decode('utf-8'), 'Assin' : base64.b64encode(assin).decode('utf-8')})
+        payload = json.dumps({'Message' : base64.b64encode(answer).decode('utf-8')})
 
         message = bytes('{}{}\r\n\r\n{}'.format(header, sys.getsizeof(payload), payload), 'utf-8')
         #Envia a resposta.
