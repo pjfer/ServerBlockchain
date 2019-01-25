@@ -1,7 +1,6 @@
 fields = ['Author', 'Key', 'Cert'] #Fields of the bid to decrypt
 backend = default_backend()
 algorithm = algorithms.AES(key)
-key, iv_list = self.auction_keys[auctionId]
 
 for field in fields:
     field_value = base64.b64decode(bid[field])

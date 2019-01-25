@@ -74,7 +74,7 @@ class AuctionManager:
 
     def encrypt(self, auctionId, bid, key=None):
         exec(self.auctions[auctionId][1], locals(), globals())
-        self.auction_keys[auctionId] = (key, iv_list)
+        self.auction_keys[auctionId].append((key, iv_list))
         return bid
         
     def decrypt(self, auctionId, bid):
