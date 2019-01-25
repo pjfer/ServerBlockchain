@@ -1,4 +1,4 @@
-import json, secrets, base64
+import json, secrets, base64, random
 from datetime import datetime
 from Auction import Auction
 from Bid import Bid
@@ -22,16 +22,24 @@ class AuctionRepository:
         for auctionId in self.activeAuctions:
             auctions[auctionId] = { 'Type' : self.activeAuctions[auctionId].getType() }
 
-        response = { 'Id' : 17, 'Auctions' : auctions }
-        return json.dumps(response)
-            
+        return json.dumps( { 'Id' : 17, 'Auctions' : auctions })
 
+    def showFinAuct(self):
+        auctions = {}
+        for auctionId in self.finishedAuctions:
+            auctions[auctionId] = { 'Type' : self.finishedAuctions[auctionId].getType()}
+        #Precisa de novo Id -> a selecionar
+        return {'Id' : 300, 'Auctions':auctions}
+            
     def showAuction(self, auctionId):
         if auctionId in self.activeAuctions: 
-            return json.dumps( { 'Id' : 18, 'Chain' : self.activeAuctions[auctionId].getJson() })
-
-        elif auctionId in self.finishedAuctions:
-            return json.dumps( { 'Id' : 18, 'Chain' : self.finishedAuctions[auctionId].getJson()})
+            return json.dumps( { 'Id' : 18, 'Chain' : self.activeAuctions[auctionId].getJson(), 'Status' : True })
+'''----------------------------------------------------------------------------------------------------------------------------------------------'''
+        elif auctionId in self.finishedAuctions and self.finishedAuctions[auctionId].getWinner() != '':
+            return json.dumps( { 'Id' : 18, 'Chain' : self.finishedAuctions[auctionId].getJson(), 'Status' : False})
+'''----------------------------------------------------------------------------------------------------------------------------------------------'''
+        elif auctionId in self.finishedAuctions and self.finishedAuctions[auctionId].getWinner() == '':
+            return json.dumps( { 'Id' : 18, 'Chain' : self.finishedAuctions[auctionId].getJson(), 'Status' : True})
 
         return json.dumps({ 'Id':111, 'Reason': 'Auction does not exist' })
         
@@ -67,27 +75,28 @@ class AuctionRepository:
 
                 sendTime = datetime.now()
                 #Cria a mensagem de resposta (com o receipt).
-                text_to_sign = (str(recvTime) + str(sendTime) + "True" + str(self.activeAuctions[auctionId].getLastPosition())).encode()
+                text_to_sign = (str(auctionId) + str(self.receiptId) + str(recvTime) + str(sendTime) + "True" + str(self.activeAuctions[auctionId].getLastPosition())).encode()
                 ass = self.key.sign(text_to_sign, self.padding, hashes.SHA256())
                 return json.dumps({ 'Id' : 213 , 'AuctionId' : auctionId, 'ReceiptId' : self.receiptId, 'TimestampRec' : str(recvTime), 'TimestampEnv' : str(sendTime), 'Success' : 'True', 'Pos' : self.activeAuctions[auctionId].getLastPosition(), 'Sign' : base64.b64encode(ass).decode('utf-8') })
 
             #Se o desafio não for comprido
             sendTime = datetime.now()
-            text_to_sign = (str(recvTime) + str(sendTime) + "False").encode()
+            text_to_sign = (str(auctionId) + str(self.receiptId) + str(recvTime) + str(sendTime) + "False").encode()
             ass = self.key.sign(text_to_sign, self.padding, hashes.SHA256())
             return json.dumps({ 'Id' : 113, 'AuctionId' : auctionId, 'ReceiptId' : self.receiptId, 'TimestampRec' : str(recvTime), 'TimestampEnv' : str(sendTime), 'Success' : 'False', 'Reason' : 'Wrong Answer to Challenge', 'Sign' : base64.b64encode(ass).decode('utf-8') })
 
         #Se o Auction já tiver acabado ou não existir
         sendTime = datetime.now()
-        text_to_sign = (str(recvTime) + str(sendTime) + "False").encode()
+        text_to_sign = (str(auctionId) + str(self.receiptId) + str(recvTime) + str(sendTime) + "False").encode()
         ass = self.key.sign(text_to_sign, self.padding, hashes.SHA256())
         return json.dumps({'Id' : 113, 'AuctionId' : auctionId, 'ReceiptId' : self.receiptId,'TimestampRec' : str(recvTime), 'TimestampEnv' : str(sendTime), 'Success' : 'False', 'Reason' : 'Auction as ended or does not exist', 'Sign' : base64.b64encode(ass).decode('utf-8') })
 
+'''----------------------------------------------------------------------------------------------------------------------------------------------'''
     def getChallenge(self, auctionId):
         if auctionId in self.activeAuctions:
             challenge = self.activeAuctions[auctionId].getLastBlock().getLink()
             nhash = "SHA256"
-            dificulty = 2 #número de números iguais a 0.
+            self.dificulty = random.randint(0, 3) #número de números iguais a 0.
 
             return json.dumps({ 'Id' : 214, 'Difficulty' : dificulty, 'Challenge' :  base64.b64encode(challenge).decode('utf-8'), 'Hash' : nhash })
         
@@ -142,27 +151,28 @@ class AuctionRepository:
             return json.dumps({ 'Id' : 215 })
         
         return json.dumps({ 'Id' : 115, 'Reason' : 'Invalid Requester' })
-
+'''----------------------------------------------------------------------------------------------------------------------------------------------'''
     def verifyChallenge(self, auctionId, bid):
         digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
         response = bid.getCriptAnswer()
         nonce = response['Nonce']
-        dif = 2
 
         digest.update(nonce + self.activeAuctions[auctionId].getLastBlock().getLink())
         result =  digest.finalize()
         
-        if result[0:dif] == b'0'*dif and result == response['Response']:
+        if result[0:self.difficulty] == b'0'*self.difficulty and result == response['Response']:
             return True
         else:
             return False
         return True
-
-    def backgroudChecker():
-        '''
-        Fazer uma Thread que percorre todos os leilões ativos e verifica se estes já acabaram ou não.
-        '''
-        return True
+        
+'''-------------------------------------------------Falta Criar uma thread no servidor para estar a correr isto periodicamente---------------------------------------------------------------------------------------------'''
+    def backgroudChecker(self):
+        for i in self.activeAuctions:
+        	if self.activeAuctions[i].hasEnded():
+        		self.activeAuctions[auctionId].close()
+                self.finishedAuctions[auctionId] = self.activeAuctions[auctionId]
+                self.activeAuctions.pop(auctionId)
 
 
 

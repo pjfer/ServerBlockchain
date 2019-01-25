@@ -34,11 +34,9 @@ class Auction:
     
     def getBlockChain(self):
         return self.blockchain
-    
+'''----------------------------------------------------------------------------------------------------------------------------------------------'''    
     def getWinner(self):
-        if self.hasEnded(): 
-            return winner
-        return None
+        return winner
     
     def blockToJson(self):
         chain = []
