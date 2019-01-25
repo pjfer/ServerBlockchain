@@ -15,6 +15,7 @@ class AuctionRepository:
 
         self.padding = padding.PSS(mgf =padding.MGF1(hashes.SHA256()), salt_length = padding.PSS.MAX_LENGTH)
         self.receiptId = 0
+        self.difficulty = random.randint(1, 3)
 
     def showActvAuct(self):
         auctions = {}
@@ -34,10 +35,10 @@ class AuctionRepository:
     def showAuction(self, auctionId):
         if auctionId in self.activeAuctions: 
             return json.dumps( { 'Id' : 18, 'Chain' : self.activeAuctions[auctionId].getJson(), 'Status' : True })
-'''----------------------------------------------------------------------------------------------------------------------------------------------'''
+#----------------------------------------------------------------------------------------------------------------------------------------------'''
         elif auctionId in self.finishedAuctions and self.finishedAuctions[auctionId].getWinner() != '':
             return json.dumps( { 'Id' : 18, 'Chain' : self.finishedAuctions[auctionId].getJson(), 'Status' : False})
-'''----------------------------------------------------------------------------------------------------------------------------------------------'''
+#----------------------------------------------------------------------------------------------------------------------------------------------'''
         elif auctionId in self.finishedAuctions and self.finishedAuctions[auctionId].getWinner() == '':
             return json.dumps( { 'Id' : 18, 'Chain' : self.finishedAuctions[auctionId].getJson(), 'Status' : True})
 
@@ -48,7 +49,7 @@ class AuctionRepository:
             return json.dumps({ 'Id':212, 'Winner': self.finishedAuctions[auctionId].getWinner() })
 
         return json.dumps({ 'Id':112, 'Reason':'Auction does not exist or it isnt finished'})
-            
+#----------------------------------------------------------------------------------------------------------------------------------------------'''           
     def placeBid(self, auctionId, bid):
         recvTime = datetime.now()
         self.receiptId += 1
@@ -77,6 +78,8 @@ class AuctionRepository:
                 #Cria a mensagem de resposta (com o receipt).
                 text_to_sign = (str(auctionId) + str(self.receiptId) + str(recvTime) + str(sendTime) + "True" + str(self.activeAuctions[auctionId].getLastPosition())).encode()
                 ass = self.key.sign(text_to_sign, self.padding, hashes.SHA256())
+                #-------------------
+                self.difficulty = random.randint(0, 3)
                 return json.dumps({ 'Id' : 213 , 'AuctionId' : auctionId, 'ReceiptId' : self.receiptId, 'TimestampRec' : str(recvTime), 'TimestampEnv' : str(sendTime), 'Success' : 'True', 'Pos' : self.activeAuctions[auctionId].getLastPosition(), 'Sign' : base64.b64encode(ass).decode('utf-8') })
 
             #Se o desafio não for comprido
@@ -91,14 +94,13 @@ class AuctionRepository:
         ass = self.key.sign(text_to_sign, self.padding, hashes.SHA256())
         return json.dumps({'Id' : 113, 'AuctionId' : auctionId, 'ReceiptId' : self.receiptId,'TimestampRec' : str(recvTime), 'TimestampEnv' : str(sendTime), 'Success' : 'False', 'Reason' : 'Auction as ended or does not exist', 'Sign' : base64.b64encode(ass).decode('utf-8') })
 
-'''----------------------------------------------------------------------------------------------------------------------------------------------'''
+#----------------------------------------------------------------------------------------------------------------------------------------------
     def getChallenge(self, auctionId):
         if auctionId in self.activeAuctions:
             challenge = self.activeAuctions[auctionId].getLastBlock().getLink()
             nhash = "SHA256"
-            self.dificulty = random.randint(0, 3) #número de números iguais a 0.
 
-            return json.dumps({ 'Id' : 214, 'Difficulty' : dificulty, 'Challenge' :  base64.b64encode(challenge).decode('utf-8'), 'Hash' : nhash })
+            return json.dumps({ 'Id' : 214, 'Difficulty' : self.difficulty, 'Challenge' :  base64.b64encode(challenge).decode('utf-8'), 'Hash' : nhash })
         
         return json.dumps({ 'Id' : 114, 'Reason' : 'Invalid Auction'})        
 
@@ -151,12 +153,11 @@ class AuctionRepository:
             return json.dumps({ 'Id' : 215 })
         
         return json.dumps({ 'Id' : 115, 'Reason' : 'Invalid Requester' })
-'''----------------------------------------------------------------------------------------------------------------------------------------------'''
+#----------------------------------------------------------------------------------------------------------------------------------------------
     def verifyChallenge(self, auctionId, bid):
         digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
         response = bid.getCriptAnswer()
         nonce = response['Nonce']
-
         digest.update(nonce + self.activeAuctions[auctionId].getLastBlock().getLink())
         result =  digest.finalize()
         
@@ -164,13 +165,12 @@ class AuctionRepository:
             return True
         else:
             return False
-        return True
         
-'''-------------------------------------------------Falta Criar uma thread no servidor para estar a correr isto periodicamente---------------------------------------------------------------------------------------------'''
+#-------------------------------------------------Falta Criar uma thread no servidor para estar a correr isto periodicamente---------------------------------------------------------------------------------------------
     def backgroudChecker(self):
         for i in self.activeAuctions:
-        	if self.activeAuctions[i].hasEnded():
-        		self.activeAuctions[auctionId].close()
+            if self.activeAuctions[i].hasEnded():
+                self.activeAuctions[auctionId].close()
                 self.finishedAuctions[auctionId] = self.activeAuctions[auctionId]
                 self.activeAuctions.pop(auctionId)
 
