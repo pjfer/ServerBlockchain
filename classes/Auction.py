@@ -34,7 +34,7 @@ class Auction:
     
     def getBlockChain(self):
         return self.blockchain
-'''----------------------------------------------------------------------------------------------------------------------------------------------'''    
+    
     def getWinner(self):
         return winner
     

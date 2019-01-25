@@ -4,38 +4,58 @@ def find(name, path):
         if name in dirs:
             return os.path.join(root, name)
 path = find('Projeto', '/') + "/sio-1819-g84735-84746"
-#path = find('sio-1819-g84735-84746', '/')
+#path = find('sio2018-p1g20', '/')
 sys.path.append('{}/classes'.format(path))
 import AuctionManager
 
-auctionManager = AuctionManager.AuctionManager()
+def receive(conn):
+    data = conn.recv(1024)
+    i = data.index(b':')
+    idx = data.index(b'{')
+    data_size = int(data[i+1:idx])
+    while data_size > 1024:
+        data_size -= 1024
+        data += conn.recv(1024)
+    new_data = data[idx:]
+    return new_data
 
-context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-context.load_cert_chain(certfile="{}/certs_servers/AuctionManager.crt".format(path), keyfile="{}/certs_servers/AuctionManagerKey.pem".format(path))
-context.load_verify_locations("/etc/ssl/certs/AuctionSigner.crt")
-context.options = ssl.OP_NO_SSLv2 | ssl.OP_NO_SSLv3 | ssl.OP_NO_TLSv1 | ssl.OP_SINGLE_DH_USE | ssl.OP_SINGLE_ECDH_USE
-context.set_ciphers("ECDHE-ECDSA-AES256-GCM-SHA384")
-context.verify_mode = ssl.CERT_REQUIRED
-context.check_hostname = False
-bindsocket = socket.socket()
-bindsocket.bind(('localhost', 2019))
-#bindsocket.bind(('192.168.1.2', 2019))
-bindsocket.listen(5)
+def connClient():
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(certfile="{}/certs_servers/AuctionManager.crt".format(path), keyfile="{}/certs_servers/AuctionManagerKey.pem".format(path))
+    context.load_verify_locations("/etc/ssl/certs/AuctionSigner.crt")
+    context.options = ssl.OP_NO_SSLv2 | ssl.OP_NO_SSLv3 | ssl.OP_NO_TLSv1 | ssl.OP_SINGLE_DH_USE | ssl.OP_SINGLE_ECDH_USE
+    context.set_ciphers("ECDHE-ECDSA-AES256-GCM-SHA384")
+    context.verify_mode = ssl.CERT_REQUIRED
+    context.check_hostname = False
+    bindsocket = socket.socket()
+    bindsocket.bind(('localhost', 2019))
+    #bindsocket.bind(('192.168.1.2', 2019))
+    bindsocket.listen(5)
+    return bindsocket, context
+
+def connAuctRepos():
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.verify_mode = ssl.CERT_REQUIRED
+    context.check_hostname = True
+    context.load_cert_chain(certfile="{}/certs_servers/AuctionManagerCli.crt".format(path), keyfile="{}/certs_servers/AuctionManagerCliKey.pem".format(path))
+    context.load_verify_locations("/etc/ssl/certs/AuctionSigner.crt")
+    context.options = ssl.OP_NO_SSLv2 | ssl.OP_NO_SSLv3 | ssl.OP_NO_TLSv1 | ssl.OP_SINGLE_DH_USE | ssl.OP_SINGLE_ECDH_USE
+    context.set_ciphers("ECDHE-ECDSA-AES256-GCM-SHA384")
+    conn = context.wrap_socket(socket.socket(socket.AF_INET), server_hostname="AuctionRepository")
+    conn.connect(("localhost", 2020))
+    #conn.connect(("192.168.1.3", 2019))
+    return conn
+
+bindsocket, context = connClient()
+auctionManager = AuctionManager.AuctionManager()
 
 try:
     while True:
         newsocket, fromaddr = bindsocket.accept()
         connstream = context.wrap_socket(newsocket, server_side=True)
         client_cert = connstream.getpeercert()
-        owner = client_cert['subject']
-        data = connstream.recv(1024)
-        i = data.index(b':')
-        idx = data.index(b'{')
-        message_size = int(data[i+1:idx])
-        while message_size > 1024:
-            message_size -= 1024
-            data += connstream.recv(1024)
-        new_data = data[idx:]
+        owner = client_cert['subject'][-1][-1][-1]
+        new_data = receive(connstream)
         print(new_data)
         message = json.loads(new_data)
         id = message['Id']
@@ -43,18 +63,27 @@ try:
         new_message = b''
 
         if id == 0:
-            payload = str(auctionManager.createAuction(message['Type'], message['Time_to_end'], owner, message['Descr']))
+            payload = auctionManager.createAuction(message['Name'], message['Type'], message['Time_to_end'], owner, message['Descr'], message['PubKey'], message['Dynamic_val'], message['Dynamic_encryp'], message['Dynamic_decryp'], message['Dynamic_winVal'])
+            new_message = bytes('{}{}\r\n\r\n{}'.format(header, sys.getsizeof(payload), payload), 'utf-8')
+            conn = connAuctRepos()
+            conn.sendall(new_message)
+            new_data = json.loads(receive(conn))
+            if new_data['Id'] != 215:
+                auctionManager.clear()
+            payload = json.dumps(new_data)
             new_message = bytes('{}{}\r\n\r\n{}'.format(header, sys.getsizeof(payload), payload), 'utf-8')
         elif id == 1:
-            payload = str(auctionManager.endAuction(message['AuctionId'], owner))
+            payload = auctionManager.endAuction(message['AuctionId'], owner)
             new_message = bytes('{}{}\r\n\r\n{}'.format(header, sys.getsizeof(payload), payload), 'utf-8')
         elif id == 2:
-            payload = str(auctionManager.validateBid(message['AuctionId'], message['Bid']))
+            payload = auctionManager.validateBid(message['AuctionId'], message['Bid'])
             new_message = bytes('{}{}\r\n\r\n{}'.format(header, sys.getsizeof(payload), payload), 'utf-8')
-        #else:
-        #Enviar para o Repository ou dar erro/ignorar
+        elif id == 19:
+            payload = auctionManager.ownersKey(message['AuctionId'])
+            new_message = bytes('{}{}\r\n\r\n{}'.format(header, sys.getsizeof(payload), payload), 'utf-8')
 
         connstream.send(new_message)
+        print(new_message)
         print(connstream.version())
 except Exception:
     print(traceback.format_exc())

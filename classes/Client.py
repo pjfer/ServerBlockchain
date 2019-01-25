@@ -1,21 +1,37 @@
-import sys, PyKCS11, json, secrets
+import sys, PyKCS11, json, secrets, base64, os
 from datetime import datetime
 from cryptography import x509
+from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 import Bid
 import Auction
 
+def find(name, path):
+    for root, dirs, files in os.walk(path):
+        if name in dirs:
+            return os.path.join(root, name)
+
+path = find('Projeto', '/') + "/sio-1819-g84735-84746/classes/"
+#path = find('sio2018-p1g20', '/') + "/classes/"
+
 class Client:
     def __init__(self):
         self.receipt = {}
+        self.customEncrypt = None
+        self.pubKey = b''
 
-    def createAuction(self, type, endTime, description, customVal, customEncryp):
-        message = json.dumps({ 'Id' : 0, 'Type' : type, 'Time_to_end' : endTime, 'Descr' : description, 'Dynamic_val' : customVal, 'Dynamic_encryp' : customEncryp })
-        return message
+    def createAuction(self, name, type, endTime, description, customVal, customEncryp, customDecryp, customWinVal):
+        #self.pubKey = 
+        return json.dumps({ 'Id' : 0, 'Name' : name, 'Type' : type, 'Time_to_end' : endTime, 'Descr' : description, 'Dynamic_val' : base64.b64encode(customVal.encode()).decode('utf-8'), 'Dynamic_encryp' : base64.b64encode(customEncryp.encode()).decode('utf-8'), 'Dynamic_decryp' : base64.b64encode(customDecryp.encode()).decode('utf-8'), 'Dynamic_winVal' : base64.b64encode(customWinVal.encode()).decode('utf-8'), 'PubKey' : base64.b64encode(self.pubKey).decode('utf-8') })
     
-    def createBid(self, auctionId, value):
+    def createBid(self, auctionId, value, customEncrypt=None, pubKey=None):
+        if customEncrypt != None:
+            self.customEncrypt = customEncrypt
+        if pubKey != None:
+            self.pubKey = pubKey
         lib = '/usr/local/lib/libpteidpkcs11.so'
         pkcs11 = PyKCS11.PyKCS11Lib()
         pkcs11.load(lib)
@@ -44,41 +60,31 @@ class Client:
                 (PyKCS11.CKA_LABEL,'CITIZEN AUTHENTICATION KEY')])[0]
             mechanism = PyKCS11.Mechanism(PyKCS11.CKM_SHA1_RSA_PKCS, None)
 
-            author = bytes(str(cert_der.subject), 'utf-8')
+            author = cert_der.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value.encode()
             timestamp = datetime.now().timestamp()
-            criptAnswer = b'basdg'
-            key = secrets.token_bytes(32)
-            cert_der = bytes(str(cert_der), 'utf-8')
-            text = author + bytes(str(timestamp), 'utf-8') + bytes(str(criptAnswer), 'utf-8') + key + cert_der
+            criptAnswer = { 'Response' : base64.b64encode(b'abc').decode('utf-8'), 'Nonce' : base64.b64encode(b'def').decode('utf-8'), 'Difficulty' : 0 }
+            text = author + bytes(str(timestamp), 'utf-8') + bytes(str(criptAnswer), 'utf-8') + self.pubKey + cert_der.public_bytes(serialization.Encoding.PEM)
             signature = bytes(session.sign(private_key, text, mechanism))
-            bid = Bid.Bid(author, bytes(value, 'utf-8'), str(timestamp), criptAnswer, self.encrypt(key, cert_der), self.encrypt(key, key), signature)
-            message = json.dumps({ 'Id' : 2, 'AuctionId' : auctionId, 'Bid' : bid.getJson() })
+            bid = Bid.Bid(author, value, str(timestamp), criptAnswer, pubKey, cert_der.public_bytes(serialization.Encoding.PEM), signature)
+            bid = self.encrypt(auctionId, bid, pubKey)
+            message = json.dumps({ 'Id' : 13, 'AuctionId' : auctionId, 'Bid' : bid.getJson() })
         return message
 
     def requestAuction(self, auctionId):
-        message = json.dumps({ 'Id' : 11, 'auctionId' : auctionId })
-        return message
+        return json.dumps({ 'Id' : 11, 'auctionId' : auctionId })
 
     def requestWinner(self, auctionId):
-        message = json.dumps({ 'Id' : 12, 'auctionId' : auctionId })
-        return message
+        return json.dumps({ 'Id' : 12, 'auctionId' : auctionId })
 
     def showActAuction(self):
-        message = json.dumps({ 'Id' : 10 })
-        return message
+        return json.dumps({ 'Id' : 10 })
 
     def endAuction(self, auctionId):
-        message = json.dumps({ 'Id' : 1, 'AuctionId' : auctionId })
-        return message
+        return json.dumps({ 'Id' : 1, 'AuctionId' : auctionId })
 
-    def encrypt(self, key, field):
-        backend = default_backend()
-        algorithm = algorithms.AES(key)
-        iv = secrets.token_bytes(16)
-        mode = modes.CBC(iv)
-        cipher = Cipher(algorithm, mode, backend)
-        encryptor = cipher.encryptor()
-        padder = padding.PKCS7(128).padder()
-        padded_data = padder.update(field) + padder.finalize()
-        ct = encryptor.update(padded_data) + encryptor.finalize()
-        return ct
+    def getCustomEncrypt(self):
+        return self.customEncrypt
+
+    def encrypt(self, auctionId, bid, key=None):
+        exec(self.customEncrypt, locals(), globals())
+        return bid
