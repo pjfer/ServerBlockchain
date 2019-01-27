@@ -1,7 +1,9 @@
 if auctionId in self.auctions.keys():
     bid_value = bid['Value']
-    if bid_value > self.last_value and (bid_value - self.last_value) >= self.min_value:
-        self.last_value = bid_value
+    if self.last_bid != {} and bid_value > self.last_bid['Value'] and (bid_value - self.last_bid['Value']) >= self.min_value:
+        bid = self.encrypt(auctionId, bid)
+        payload = json.dumps({ 'Id' : 202, 'AuctionId' : auctionId, 'Bid' :  bid })
+    elif self.last_bid == {} and bid_value >= self.min_value:
         bid = self.encrypt(auctionId, bid)
         payload = json.dumps({ 'Id' : 202, 'AuctionId' : auctionId, 'Bid' :  bid })
     else:

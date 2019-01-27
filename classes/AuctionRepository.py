@@ -11,9 +11,8 @@ def find(name, path):
     for root, dirs, files in os.walk(path):
         if name in dirs:
             return os.path.join(root, name)
-path = find('Projeto', '/') + "/sio-1819-g84735-84746"
+path = find('Projeto', '/') + "/sio2018-p1g20"
 #path = find('sio2018-p1g20', '/')
-sys.path.append('{}/classes'.format(path))
 
 class AuctionRepository:
     def __init__(self):
@@ -62,7 +61,7 @@ class AuctionRepository:
 
     def validateBid(self, auctionId, bid):
         if auctionId in self.activeAuctions:
-            return json.dumps({ 'Id' : 2, 'AuctionId' : auctionId, 'Bid' : bid.getJson() })
+            return json.dumps({ 'Id' : 2, 'AuctionId' : auctionId, 'Bid' : bid })
         return json.dumps({ 'Id' : 102, 'Reason' : 'Invalid Auction!' })
             
     def placeBid(self, auctionId, bid):
@@ -167,12 +166,12 @@ class AuctionRepository:
 
     def verifyChallenge(self, auctionId, bid):
         digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
-        response = bid.getCriptAnswer()
+        response = bid['CriptAnswer']
         nonce = response['Nonce']
-        digest.update(nonce + self.activeAuctions[auctionId].getLastBlock().getLink())
+        digest.update(nonce.encode() + self.activeAuctions[auctionId].getLastBlock().getLink())
         result =  digest.finalize()
         
-        if result[0:self.difficukty] == b'0'*self.difficulty and result == response['Response']:
+        if result[0:self.difficulty] == b'0'*self.difficulty and result == response['Response']:
             return True
         return False
 
