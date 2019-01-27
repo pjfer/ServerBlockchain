@@ -40,7 +40,7 @@ class Client:
             self.customEncrypt = base64.b64decode(customEncrypt)
         if pubKey != None:
             self.pubKey = base64.b64decode(pubKey)
-        self.pubKey = load_pem_public_key(self.pubKey, backend=default_backend())
+            self.pubKey = load_pem_public_key(self.pubKey, backend=default_backend())
         session, cert_der, private_key, mechanism = self.getCCData()
         author = cert_der.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value.encode()
         timestamp = datetime.now().timestamp()
