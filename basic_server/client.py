@@ -95,7 +95,7 @@ while True:
         s.close()
         break
 
-    if option != 1 and option != 6 and option != 7:
+    if option != 1 and option != 7 and option != 8:
         if server == '' or server == 'AuctionManager':
             if server == 'AuctionManager':
                 s.close()
@@ -156,20 +156,27 @@ while True:
                 if responseDec['Id'] == 214:
                     link = base64.b64decode(responseDec['Challenge'])
                     difficulty = responseDec['Difficulty']
-                    difficulty = 1
                     nonce, requestEnc = encrypt(client.createBid(auctionId, value, difficulty, link, customEncrypt, pubKey))
                     payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
                     size = sys.getsizeof(header + str(payload))
                     size += sys.getsizeof(size)
                     message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
+                    s.sendall(message)
+                    new_data = receive(s)
+                    new_data = json.loads(new_data)
+                    nonce, responseDec = decrypt(new_data['Nonce'], new_data['Message'])
+                    if responseDec['Id'] == 213:
+                        rec = responseDec
+                        client.saveAndValidReceipt(rec)
+                        message = b''
                 else:
-                    nonce, requestEnc = encrypt(new_data)
+                    nonce, requestEnc = encrypt(json.dumps(new_data))
                     payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
                     size = sys.getsizeof(header + str(payload))
                     size += sys.getsizeof(size)
                     message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
             else:
-                nonce, requestEnc = encrypt(new_data)
+                nonce, requestEnc = encrypt(json.dumps(new_data))
                 payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
                 size = sys.getsizeof(header + str(payload))
                 size += sys.getsizeof(size)
@@ -187,14 +194,13 @@ while True:
             if responseDec['Id'] == 214:
                 link = base64.b64decode(responseDec['Challenge'])
                 difficulty = responseDec['Difficulty']
-                difficulty = 1
                 nonce, requestEnc = encrypt(client.createBid(auctionId, value, difficulty, link))
                 payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
                 size = sys.getsizeof(header + str(payload))
                 size += sys.getsizeof(size)
                 message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
             else:
-                nonce, requestEnc = encrypt(new_data)
+                nonce, requestEnc = encrypt(json.dumps(new_data))
                 payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
                 size = sys.getsizeof(header + str(payload))
                 size += sys.getsizeof(size)
@@ -212,8 +218,13 @@ while True:
         nonce, responseDec = decrypt(new_data['Nonce'], new_data['Message'])
         if responseDec['Id'] == 18 and responseDec['Status'] == False:
             client.verifyEndedChain(auctionId, responseDec['Chain'], responseDec['Winner'])
+            message = b''
+        elif responseDec['Id'] == 18 and responseDec['Status'] == True:
+            client.verifyOnChain(responseDec['Chain'])
+            message = b''
         else:
             print("Auction does not exist!")
+            message = b''
     elif option == 4:
         auctionId = int(input("Auction ID = "))
         nonce, requestEnc = encrypt(client.requestWinner(auctionId))
@@ -248,9 +259,11 @@ while True:
         size += sys.getsizeof(size)
         message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
 
-    s.sendall(message)
-    print("SENT")
-    data = receive(s)
-    data = json.loads(data)
-    nonce, responseDec = decrypt(data['Nonce'], data['Message'])
-    print(responseDec)
+    if message != b'':
+        s.sendall(message)
+        print(message)
+        print("SENT")
+        data = receive(s)
+        data = json.loads(data)
+        nonce, responseDec = decrypt(data['Nonce'], data['Message'])
+        print(responseDec)

@@ -1,4 +1,4 @@
-import socket, ssl, sys, json, os, secrets, base64, fnmatch, PyKCS11
+import socket, ssl, sys, json, os, secrets, base64, fnmatch, PyKCS11, traceback
 from os import scandir
 from threading import Thread
 from cryptography import x509
@@ -148,16 +148,11 @@ def connAuctManSer():
                     size = sys.getsizeof(header + str(payload))
                     size += sys.getsizeof(size)
                     new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
-                elif id == 19:
-                    payload = auctionRepository.addKeys(message['AuctionId'], message['ClientKey'], message['AuctManKeys'])
-                    size = sys.getsizeof(header + str(payload))
-                    size += sys.getsizeof(size)
-                    new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
 
                 connstream.send(new_message)
                 print(connstream.version())
         except Exception:
-            print()
+            print(traceback.format_exc())
             bindsocket.close()
 
 def firstMessage(connstream, message):
@@ -267,6 +262,11 @@ def connClient():
                         size = sys.getsizeof(header + str(payload))
                         size += sys.getsizeof(size)
                         new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
+                    elif id == 19:
+                        payload = auctionRepository.addKeys(message['AuctionId'], message['ClientKey'], message['AuctManKeys'])
+                        size = sys.getsizeof(header + str(payload))
+                        size += sys.getsizeof(size)
+                        new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
                     elif id == 20:
                         nonce, requestEnc = encrypt(nonce, auctionRepository.getFirstBlock(message['AuctionId']))
                         payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
@@ -283,7 +283,7 @@ def connClient():
                     connstream.send(new_message)
                     print("SENT")
             except Exception:
-                print()
+                print(traceback.format_exc())
                 connstream.close()
 
 def connAuctMan():

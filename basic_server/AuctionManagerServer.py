@@ -1,4 +1,4 @@
-import socket, ssl, sys, json, os, secrets, base64, fnmatch, PyKCS11
+import socket, ssl, sys, json, os, secrets, base64, fnmatch, PyKCS11, traceback
 from os import scandir
 from threading import Thread
 from cryptography import x509
@@ -148,7 +148,7 @@ def connAuctReposSer():
                 print("SENT")
                 print(connstream.version())
         except Exception:
-            print()
+            print(traceback.format_exc())
             bindsocket.close()
 
 def firstMessage(connstream, message):
@@ -259,7 +259,7 @@ def connClient():
                     connstream.sendall(new_message)
                     print("SENT")
             except Exception:
-                print()
+                print(traceback.format_exc())
                 connstream.close()
 
 def connAuctRepos():

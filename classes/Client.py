@@ -57,7 +57,10 @@ class Client:
         return message
 
     def sendPrivKey(self, auctionId):
-        return json.dumps({ 'Id' : 19, 'AuctionId' : auctionId, 'ClientKey' : base64.b64encode(self.privKey.private_bytes(encoding=serialization.Encoding.PEM, format=serialization.TraditionalOpenSSL, encryption_algorithm=serialization.NoEncryption())).decode('utf-8') })
+        if self.privKey != b'':
+            return json.dumps({ 'Id' : 19, 'AuctionId' : auctionId, 'ClientKey' : base64.b64encode(self.privKey.private_bytes(encoding=serialization.Encoding.PEM, format=serialization.TraditionalOpenSSL, encryption_algorithm=serialization.NoEncryption())).decode('utf-8') })
+        else:
+            return json.dumps({ 'Id' : 19, 'AuctionId' : auctionId, 'ClientKey' : base64.b64encode(self.privKey).decode('utf-8') })
 
     def requestAuction(self, auctionId):
         return json.dumps({ 'Id' : 11, 'AuctionId' : auctionId })
@@ -146,6 +149,41 @@ class Client:
         f = open("{}/receipts/Auction{}_Receipt{}.receipt".format(path, str(rec['AuctionId']), str(rec['ReceiptId'])), "w+")
         f.write(receipt)
         f.close()
+        
+    def verifyOnChain(self, chain):
+        #Load da Chave do Repository
+        padd = asyPadding.PSS(mgf=asyPadding.MGF1(hashes.SHA256()), salt_length=asyPadding.PSS.MAX_LENGTH)
+        repKey = x509.load_pem_x509_certificate(open("{}/certs_servers/AuctionRepository.crt".format(path), "rb").read() , backend=default_backend()).public_key()
+        for i in range(len(chain)):
+            if i != 0:
+                #Verificação dos links da blockchain
+                link = chain[i].getLink()
+                digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
+                previousLink = chain[i-1].getLink() + chain[i-1].getRepSign()
+                digest.update(previousLink)
+                if link !=  digest.finalize():
+                    return False
+                try:
+                    #Verificação da Assinatura do Repositório (para os blocos com bids)
+                    link = chain[i].getLink()
+                    bid =  chain[i].getContent()
+                    challenge = chain[i].getChallenge()
+                    time = chain[i].getTimestamp()
+                    repKey.verify(chain[i].getRepSign(), bid.getAuthor() + bid.getValue() + link +str(time).encode()+ json.dumps(challenge).encode(), padd, hashes.SHA256())
+                except Exception as e:
+                    print(e)
+                    return False
+            else:
+                try:
+                    #Verificação da Assinatura do Repositório para o primeiro bloco (com as regras do auction)
+                    link = chain[i].getLink()
+                    cont =  chain[i].getContent()
+                    verDin = cont['VerDin']
+                    encDin = cont['EncDin']
+                    repKey.verify(chain[i].getRepSign(), json.dumps(verDin).encode() + json.dumps(encDin).encode() + link, padd, hashes.SHA256())
+                except Exception:
+                    return False
+            return True
 
     def verifyEndedChain(self, auctionId, chain, winner):
         user = self.name
@@ -200,7 +238,6 @@ class Client:
                         repKey.verify(chain[i].getRepSign(), bid.getAuthor() + bid.getValue() + link +str(time).encode()+ json.dumps(challenge).encode(), padd, hashes.SHA256())
 
                         bid = bid.getJson()
-                        validBid = False
                         key = base64.b64decode(manKeys[i-1][0])
 
                         iv_list = []
@@ -229,6 +266,15 @@ class Client:
                         #Verificação da Assinatura da Bid
                         cliKey = x509.load_pem_x509_certificate(bid.getCert(), backend=default_backend()).public_key()
                         cliKey.verify(bid.getSignature(), bid.getAuthor() + bid.getValue() +str(bid.getTimestamp()).encode()+ str(bid.getCriptAnswer()).encode() + bid.getCert() + bid.getKey(), padd, hashes.SHA256())
+                        
+                        #Verificação do criptopuzzle
+                        digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
+                        response = bid['CriptAnswer']
+                        nonce = response['Nonce']
+                        digest.update(nonce.encode() + base64.b64decode(challenge['Challenge']))
+                        result =  digest.finalize()
+                        if result[0:challenge['Difficulty']] != b'0'*challenge['Difficulty'] or result != response['Response']:
+                            return False
 
                         #Verificação dos seus receipts
                         if i in pos and bid.getAuthor() != user:

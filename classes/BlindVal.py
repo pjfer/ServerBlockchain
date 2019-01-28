@@ -6,3 +6,5 @@ else:
     self.bids_made[auctionId] = 1
 if self.bids_made[auctionId] <= self.possible_bids:
     validBid = True
+else:
+    validBid = False

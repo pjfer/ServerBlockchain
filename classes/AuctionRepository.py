@@ -40,7 +40,7 @@ class AuctionRepository:
         auctions = {}
         for auctionId in self.finishedAuctions:
             auctions[auctionId] = { 'Type' : self.finishedAuctions[auctionId].getType() }
-        return { 'Id' : 221, 'Auctions' : auctions }
+        return json.dumps({ 'Id' : 221, 'Auctions' : auctions })
             
     def showAuction(self, auctionId):
         if auctionId in self.activeAuctions: 
@@ -142,6 +142,11 @@ class AuctionRepository:
             #Cria o bloco e adiciona à blockchain
             block = Block({'ClientKey' : clientKey, 'AuctManKeys': auctionManagerKeys} , None, link, None, assin)
             self.finishedAuctions[auctionId].addToBlockChain(block)
+            winValCode = base64.b64decode(self.finishedAuctions[auctionId].getFirstBlock()['Content']['WinVal'])
+            print(winValCode)
+            winner = ''
+            exec(winValCode, locals(), globals())
+            self.finishedAuctions[auctionId].setWinner(winner)
             return json.dumps({ 'Id' : 219 })
         else:
             return json.dumps({ 'Id' : 119, 'Reason' : 'Auction is not finnished!' })
@@ -159,11 +164,12 @@ class AuctionRepository:
             previousLink = secrets.token_bytes(16)
             digest.update(previousLink) 
             link =  digest.finalize()
-            verDin = base64.b64decode(verDin)
-            encDin = base64.b64decode(encDin)
-            decDin = base64.b64decode(decDin)
-            winValDin = base64.b64decode(winValDin)
-            text_to_sign = json.dumps(verDin).encode() + json.dumps(encDin).encode() +  + json.dumps(decDin).encode() + json.dumps(winValDin).encode() + link 	#Adicionar a chave pública à assinatura, customDecrypt e customWinVal
+            verDinDec = base64.b64decode(verDin)
+            encDinDec = base64.b64decode(encDin)
+            decDinDec = base64.b64decode(decDin)
+            winValDinDec = base64.b64decode(winValDin)
+            keyDec = base64.b64decode(key)
+            text_to_sign = verDinDec + encDinDec + keyDec + decDinDec + winValDinDec + link
             assin = self.key.sign(text_to_sign, self.padding, hashes.SHA256())
             #Cria o bloco e adiciona à blockchain
             block = Block({'VerDin' : verDin, 'EncDin': encDin, 'PubKey' : key, 'DecDin' : decDin, 'WinValDin' : winValDin } , None, link, None, assin)

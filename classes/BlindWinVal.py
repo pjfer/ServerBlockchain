@@ -1,4 +1,4 @@
-padd = padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()),algorithm=hashes.SHA256(),label=None)
+padd = asyPadding.OAEP(mgf=asyPadding.MGF1(algorithm=hashes.SHA256()),algorithm=hashes.SHA256(),label=None)
 keys = chain[-1].getContent()
 manKeys = keys['AuctManKeys']
 privKey = keys['clientKey']

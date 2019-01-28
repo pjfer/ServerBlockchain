@@ -57,7 +57,6 @@ class AuctionManager:
         return json.dumps({ 'Id' : 101, 'Reason' : 'Invalid Auction!' })
 
     def validateBid(self, auctionId, bid, owner):
-        validBid = False
 
         if auctionId in self.auctions.keys():
             if owner != self.auctions[auctionId][4]:
