@@ -66,8 +66,7 @@ def build_chain(chain, cert, intermediate_certs, checked_certs):
 def checkChain(chain, crls):
     for cert in range(0, len(chain)-1):
         purpose = chain[cert].extensions.get_extension_for_oid(ExtensionOID.KEY_USAGE).value
-        if cert == 0 and (purpose.digital_signature == False or purpose.content_commitment == False):
-            #Possível validação de key_encipherment, data_encipherment, key_agreement, decipher_only, encipher_only
+        if cert == 0 and purpose.digital_signature == False:
             return False
         for crl in crls:
             serial = chain[cert].serial_number
@@ -80,7 +79,7 @@ def checkChain(chain, crls):
             return False
         try:
             pub_key = chain[cert+1].public_key()
-            pub_key.verify(chain[cert].signature, chain[cert].tbs_certificate_bytes, padding.PKCS1v15(), chain[cert].signature_hash_algorithm)
+            pub_key.verify(chain[cert].signature, chain[cert].tbs_certificate_bytes, asyPadding.PKCS1v15(), chain[cert].signature_hash_algorithm)
         except Exception as e:
             print(e)
             return False
@@ -98,7 +97,6 @@ def receive(conn):
     return new_data
 
 def encrypt(nonce, request):
-    nonce += secrets.token_bytes(16)
     requestEnc = aesgcm.encrypt(nonce, request.encode(), None)
     nonce = base64.b64encode(nonce).decode('utf-8')
     requestEnc = base64.b64encode(requestEnc).decode('utf-8')
@@ -140,63 +138,22 @@ def connAuctManSer():
                 id = message['Id']
                 new_message = b''
 
-                '''
-                if id == 10:
-                    payload = auctionRepository.showActvAuct()
-                    size = sys.getsizeof(header + str(payload))
-                    size += sys.getsizeof(size)
-                    new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
-                elif id == 11:
-                    payload = auctionRepository.showAuction(message['AuctionId'])
-                    size = sys.getsizeof(header + str(payload))
-                    size += sys.getsizeof(size)
-                    new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
-                elif id == 12:
-                    payload = auctionRepository.showWinner(message['AuctionId'])
-                    size = sys.getsizeof(header + str(payload))
-                    size += sys.getsizeof(size)
-                    new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
-                elif id == 13:
-                    payload = auctionRepository.validateBid(message['AuctionId'], message['Bid'])
-                    size = sys.getsizeof(header + str(payload))
-                    size += sys.getsizeof(size)
-                    new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
-                    conn = connAuctMan()
-                    conn.sendall(new_message)
-                    new_data = json.loads(receive(conn))
-                    if new_data['Id'] == 202:
-                        payload = auctionRepository.placeBid(message['AuctionId'], message['Bid'])
-                        size = sys.getsizeof(header + str(payload))
-                        size += sys.getsizeof(size)
-                        new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
-                    else:
-                        payload = json.dumps(new_data)
-                        size = sys.getsizeof(header + str(payload))
-                        size += sys.getsizeof(size)
-                        new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
-                elif id == 14:
-                    payload = auctionRepository.getChallenge(message['AuctionId'])
-                    size = sys.getsizeof(header + str(payload))
-                    size += sys.getsizeof(size)
-                    new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
-                '''
                 if id == 15:
-                    payload = auctionRepository.closeAuction(message['Requester'], message['AuctionId'])
+                    payload = auctionRepository.closeAuction(owner, message['AuctionId'])
                     size = sys.getsizeof(header + str(payload))
                     size += sys.getsizeof(size)
                     new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
                 elif id == 16:
-                    payload = auctionRepository.createAuction(message['Requester'], message['Name'], message['AuctionId'], message['Type'], message['Time_to_end'], message['Descr'], message['Dynamic_val'], message['Dynamic_encryp'], message['PubKey'], message['Dynamic_decryp'], message['Dynamic_winVal'], message['Owner'])
+                    payload = auctionRepository.createAuction(message['Requester'], message['Name'], message['AuctionId'], message['Type'], message['Time_to_end'], message['Descr'], message['Dynamic_val'], message['Dynamic_encryp'], message['PubKey'], message['Dynamic_decryp'], message['Dynamic_winVal'])
                     size = sys.getsizeof(header + str(payload))
                     size += sys.getsizeof(size)
                     new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
-                '''
-                elif id == 20:
-                    payload = auctionRepository.getFirstBlock(message['AuctionId'])
+                elif id == 19:
+                    payload = auctionRepository.addKeys(message['AuctionId'], message['ClientKey'], message['AuctManKeys'])
                     size = sys.getsizeof(header + str(payload))
                     size += sys.getsizeof(size)
                     new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
-                '''
+
                 connstream.send(new_message)
                 print(connstream.version())
         except Exception:
@@ -225,18 +182,15 @@ def firstMessage(connstream, message):
     text_to_verify = cert.public_bytes(serialization.Encoding.DER) + simKey
 
     try:
-        flag = pubKeyCli.verify(base64.b64decode(message['Assin']), text_to_verify, assinPadd, hashes.SHA256())
-        #flag = True
+        pubKeyCli.verify(base64.b64decode(message['Assin']), text_to_verify, assinPadd, hashes.SHA1())
+        flag = True
     except Exception:
         print("Invalid Message!")
 
-    flag = True
-
     if flag:
         message = json.dumps({ 'ACK' : 'Ok' })
-        assin = privKey.sign(message.encode() + nonce, assinPadd, hashes.SHA256())
         nonce, requestEnc = encrypt(nonce, message)
-        payload = json.dumps({'Message' : requestEnc, 'Nonce' : nonce, 'Assin' : base64.b64encode(assin).decode('utf-8') })
+        payload = json.dumps({'Message' : requestEnc, 'Nonce' : nonce })
         size = sys.getsizeof(header + str(payload))
         size += sys.getsizeof(size)
         message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
@@ -288,7 +242,7 @@ def connClient():
                         size += sys.getsizeof(size)
                         new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
                     elif id == 13:
-                        payload = auctionRepository.validateBid(message['AuctionId'], message['Bid'])
+                        payload = auctionRepository.validateBid(message['AuctionId'], message['Bid'], owner)
                         size = sys.getsizeof(header + str(payload))
                         size += sys.getsizeof(size)
                         new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
@@ -319,14 +273,12 @@ def connClient():
                         size = sys.getsizeof(header + str(payload))
                         size += sys.getsizeof(size)
                         new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
-                    '''
-                    elif id == 15:
-                        nonce, requestEnc = encrypt(nonce, auctionRepository.closeAuction(message['Requester'], message['AuctionId']))
+                    elif id == 21:
+                        nonce, requestEnc = encrypt(nonce, auctionRepository.showFinAuct())
                         payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
                         size = sys.getsizeof(header + str(payload))
                         size += sys.getsizeof(size)
                         new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
-                    '''
 
                     connstream.send(new_message)
                     print("SENT")

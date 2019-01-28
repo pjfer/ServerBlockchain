@@ -1,11 +1,13 @@
-import json, secrets, base64, os, sys, random
+import json, secrets, base64, os, sys, random, time
+from threading import Thread
+from threading import Lock
 from datetime import datetime
-from Auction import Auction
-from Bid import Bid
-from Block import Block
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes, serialization
+from Bid import Bid
+from Block import Block
+from Auction import Auction
 
 def find(name, path):
     for root, dirs, files in os.walk(path):
@@ -22,27 +24,29 @@ class AuctionRepository:
         self.padding = padding.PSS(mgf =padding.MGF1(hashes.SHA256()), salt_length = padding.PSS.MAX_LENGTH)
         self.receiptId = 0
         self.difficulty = random.randint(1, 3)
+        p = Thread(target=self.backgroundChecker)
+        p.start()
 
     def showActvAuct(self):
         auctions = {}
         
         for auctionId in self.activeAuctions:
-            auctions[auctionId] = { 'Type' : self.activeAuctions[auctionId].getType() }
-
+            remaining_time = self.activeAuctions[auctionId].getEndTime() - datetime.now()
+            remaining_time = int(remaining_time.seconds / 60) + (remaining_time.seconds % 60 > 0)
+            auctions[auctionId] = { 'Type' : self.activeAuctions[auctionId].getType(), 'Remaining Time' : remaining_time }
         return json.dumps({ 'Id' : 17, 'Auctions' : auctions })
 
     def showFinAuct(self):
         auctions = {}
         for auctionId in self.finishedAuctions:
             auctions[auctionId] = { 'Type' : self.finishedAuctions[auctionId].getType() }
-        #Precisa de novo Id
-        return { 'Id' : 300, 'Auctions' : auctions }
+        return { 'Id' : 221, 'Auctions' : auctions }
             
     def showAuction(self, auctionId):
         if auctionId in self.activeAuctions: 
             return json.dumps( { 'Id' : 18, 'Chain' : self.activeAuctions[auctionId].getJson(), 'Status' : True })
         elif auctionId in self.finishedAuctions and self.finishedAuctions[auctionId].getWinner() != '':
-            return json.dumps( { 'Id' : 18, 'Chain' : self.finishedAuctions[auctionId].getJson(), 'Status' : False })
+            return json.dumps( { 'Id' : 18, 'Chain' : self.finishedAuctions[auctionId].getJson(), 'Status' : False, 'Winner' : self.finishedAuctions[auctionId].getWinner() })
         elif auctionId in self.finishedAuctions and self.finishedAuctions[auctionId].getWinner() == '':
             return json.dumps( { 'Id' : 18, 'Chain' : self.finishedAuctions[auctionId].getJson(), 'Status' : True })
 
@@ -59,9 +63,9 @@ class AuctionRepository:
             return json.dumps({ 'Id':212, 'Winner': self.finishedAuctions[auctionId].getWinner() })
         return json.dumps({ 'Id':112, 'Reason':'Auction does not exist or it isnt finished'})
 
-    def validateBid(self, auctionId, bid):
+    def validateBid(self, auctionId, bid, owner):
         if auctionId in self.activeAuctions:
-            return json.dumps({ 'Id' : 2, 'AuctionId' : auctionId, 'Bid' : bid, 'AuctionOwner' : self.activeAuctions[auctionId].getOwner() })
+            return json.dumps({ 'Id' : 2, 'AuctionId' : auctionId, 'Bid' : bid, 'AuctionOwner' : owner })
         return json.dumps({ 'Id' : 102, 'Reason' : 'Invalid Auction!' })
             
     def placeBid(self, auctionId, bid):
@@ -81,7 +85,7 @@ class AuctionRepository:
                 challenge = {'Challenge' : challenge['Challenge'], 'Difficulty' : challenge['Difficulty'], 'Hash' : challenge['Hash']}
                
                 #Criar a assinatura do AuctionRep para aquele bloco
-                text_to_sign = bid.getAuthor() + bid.getValue() + link + str(recvTime).encode() + json.dumps(challenge).encode()
+                text_to_sign = bid.getSignature() + link + str(recvTime).encode() + json.dumps(challenge).encode()
                 assin = self.key.sign(text_to_sign, self.padding, hashes.SHA256())
                 #Cria o bloco e adiciona à blockchain
                 block = Block(bid, recvTime, link, challenge, assin)
@@ -113,7 +117,7 @@ class AuctionRepository:
 
             return json.dumps({ 'Id' : 214, 'Difficulty' : self.difficulty, 'Challenge' :  base64.b64encode(challenge).decode('utf-8'), 'Hash' : nhash })
         
-        return json.dumps({ 'Id' : 114, 'Reason' : 'Invalid Auction'})        
+        return json.dumps({ 'Id' : 114, 'Reason' : 'Invalid Auction'}) 
 
     def closeAuction(self, requester, auctionId):
         if requester == "AuctionManager": 
@@ -125,7 +129,7 @@ class AuctionRepository:
             return json.dumps({ 'Id' : 115, 'Reason' : 'Invalid Auction' })
         return json.dumps({ 'Id' : 115, 'Reason' : 'Invalid Requester' })
 
-    def addKeys(self,auctionId, clientKey, auctionManagerKeys):
+    def addKeys(self, auctionId, clientKey, auctionManagerKeys):
         if auctionId in self.finishedAuctions:
             digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
 
@@ -138,13 +142,16 @@ class AuctionRepository:
             #Cria o bloco e adiciona à blockchain
             block = Block({'ClientKey' : clientKey, 'AuctManKeys': auctionManagerKeys} , None, link, None, assin)
             self.finishedAuctions[auctionId].addToBlockChain(block)
+            return json.dumps({ 'Id' : 219 })
+        else:
+            return json.dumps({ 'Id' : 119, 'Reason' : 'Auction is not finnished!' })
 
-    def createAuction(self, requester, name, auctionId, type, endTime, descr, verDin, encDin, key, decDin, winValDin, owner):
+    def createAuction(self, requester, name, auctionId, type, endTime, descr, verDin, encDin, key, decDin, winValDin):
         if auctionId in self.activeAuctions or auctionId in self.finishedAuctions:
             return json.dumps({ 'Id' : 116, 'Reason' : 'Invalid AuctionId' })
         
         if requester == "AuctionManager":
-            auction = Auction(name, type, auctionId, endTime, descr, owner)
+            auction = Auction(name, type, auctionId, datetime.strptime(endTime[:19], "%Y-%m-%d %H:%M:%S"), descr)
             self.activeAuctions[auctionId] = auction
             digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
 
@@ -152,10 +159,14 @@ class AuctionRepository:
             previousLink = secrets.token_bytes(16)
             digest.update(previousLink) 
             link =  digest.finalize()
-            text_to_sign = json.dumps(verDin).encode() + json.dumps(encDin).encode() + link 	#Adicionar a chave pública à assinatura, customDecrypt e customWinVal
+            verDin = base64.b64decode(verDin)
+            encDin = base64.b64decode(encDin)
+            decDin = base64.b64decode(decDin)
+            winValDin = base64.b64decode(winValDin)
+            text_to_sign = json.dumps(verDin).encode() + json.dumps(encDin).encode() +  + json.dumps(decDin).encode() + json.dumps(winValDin).encode() + link 	#Adicionar a chave pública à assinatura, customDecrypt e customWinVal
             assin = self.key.sign(text_to_sign, self.padding, hashes.SHA256())
             #Cria o bloco e adiciona à blockchain
-            block = Block({'VerDin' : verDin, 'EncDin': encDin, 'PubKey' : key, 'decDin' : decDin, 'winValDin' : winValDin } , None, link, None, assin)
+            block = Block({'VerDin' : verDin, 'EncDin': encDin, 'PubKey' : key, 'DecDin' : decDin, 'WinValDin' : winValDin } , None, link, None, assin)
             auction.addToBlockChain(block)
             return json.dumps({ 'Id' : 216 })
         return json.dumps({ 'Id' : 116, 'Reason' : 'Invalid Requester' })
@@ -171,26 +182,16 @@ class AuctionRepository:
             return True
         return False
 
-    def backgroudChecker():
-        for i in self.activeAuctions:
-            if self.activeAuctions[i].hasEnded():
-                self.activeAuctions[auctionId].close()
-                self.finishedAuctions[auctionId] = self.activeAuctions[auctionId]
-                self.activeAuctions.pop(auctionId)
+    def backgroundChecker(self):
+        aId = -1
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        while True:
+            for auctionId in self.activeAuctions:
+                if self.activeAuctions[auctionId].hasEnded():
+                    self.activeAuctions[auctionId].close()
+                    aId = auctionId
+            if aId != -1:
+                self.finishedAuctions[aId] = self.activeAuctions[aId]
+                self.activeAuctions.pop(aId)
+                aId = -1
+            time.sleep(5)

@@ -41,12 +41,6 @@ def firstMessage():
     message = json.loads(new_data)
     nonce, responseDec = decrypt(message['Nonce'], message['Message'])
 
-    #Verifica a assinatura do Servidor
-    try:
-        pubKeyMan.verify(base64.b64decode(message['Assin']), responseDec + nonce, assinPadd, hashes.SHA1())
-    except Exception:
-        print("Invalid Message!")
-
     if responseDec['ACK'] != 'Ok':
         print("Invalid Message!")
 
@@ -89,7 +83,9 @@ while True:
     3) Validate Auction.
     4) Ask for Winner.
     5) Active Auctions.
-    6) End Auction.
+    6) Finished Auctions.
+    7) End Auction.
+    8) Send Private Key.
     0) Exit.
     Option = """))
 
@@ -99,7 +95,7 @@ while True:
         s.close()
         break
 
-    if option != 1 and option != 6:
+    if option != 1 and option != 6 and option != 7:
         if server == '' or server == 'AuctionManager':
             if server == 'AuctionManager':
                 s.close()
@@ -119,11 +115,14 @@ while True:
         type = int(input("Auction Type = "))
         endTime = int(input("Time to End (minutes) = "))
         description = input("Auction Description = ")
-        customValFile = input("Validation Filename (None if no file) = ")
-        customEncryptFile = input("Encryption Filename (None if no file) = ")
-        customDecryptFile = input("Decryption Filename (None if no file) = ")
-        customWinValFile = input("Winner Validation Filename (None if no file) = ")
-        nonce, requestEnc = encrypt(client.createAuction(name, type, endTime, description, customValFile, customEncryptFile, customDecryptFile, customWinValFile))
+        if type != 0 and type != 1:
+            customValFile = input("Validation Filename = ")
+            customEncryptFile = input("Encryption Filename = ")
+            customDecryptFile = input("Decryption Filename = ")
+            customWinValFile = input("Winner Validation Filename = ")
+            nonce, requestEnc = encrypt(client.createAuction(name, type, endTime, description, customValFile, customEncryptFile, customDecryptFile, customWinValFile))
+        else:
+            nonce, requestEnc = encrypt(client.createAuction(name, type, endTime, description))
         payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
         size = sys.getsizeof(header + str(payload))
         size += sys.getsizeof(size)
@@ -207,6 +206,14 @@ while True:
         size = sys.getsizeof(header + str(payload))
         size += sys.getsizeof(size)
         message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
+        s.sendall(message)
+        data = receive(s)
+        new_data = json.loads(data)
+        nonce, responseDec = decrypt(new_data['Nonce'], new_data['Message'])
+        if responseDec['Id'] == 18 and responseDec['Status'] == False:
+            client.verifyEndedChain(auctionId, responseDec['Chain'], responseDec['Winner'])
+        else:
+            print("Auction does not exist!")
     elif option == 4:
         auctionId = int(input("Auction ID = "))
         nonce, requestEnc = encrypt(client.requestWinner(auctionId))
@@ -221,8 +228,21 @@ while True:
         size += sys.getsizeof(size)
         message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
     elif option == 6:
+        nonce, requestEnc = encrypt(client.showFinAuction())
+        payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
+        size = sys.getsizeof(header + str(payload))
+        size += sys.getsizeof(size)
+        message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
+    elif option == 7:
         auctionId = int(input("Auction ID = "))
         nonce, requestEnc = encrypt(client.endAuction(auctionId))
+        payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
+        size = sys.getsizeof(header + str(payload))
+        size += sys.getsizeof(size)
+        message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
+    elif option == 8:
+        auctionId = int(input("Auction ID = "))
+        nonce, requestEnc = encrypt(client.sendPrivKey(auctionId))
         payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
         size = sys.getsizeof(header + str(payload))
         size += sys.getsizeof(size)

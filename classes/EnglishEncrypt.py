@@ -18,7 +18,6 @@ for field in fields:
     bid[field] = ct
 
 if self.pubKey != b'':
-    self.key = key
     ct = self.pubKey.encrypt(self.key, asyPadding.OAEP(mgf=asyPadding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None))
     bid['Key'] = base64.b64encode(ct).decode('utf-8')
     bid['IV_list'] = iv_list
