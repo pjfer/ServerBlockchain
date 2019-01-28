@@ -17,8 +17,7 @@ def find(name, path):
         if name in dirs:
             return os.path.join(root, name)
 
-path = find('Projeto', '/') + "/sio2018-p1g20"
-#path = find('sio2018-p1g20', '/')
+path = find('sio2018-p1g20', '/')
 
 class Client:
     def __init__(self):

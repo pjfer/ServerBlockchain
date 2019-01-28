@@ -13,8 +13,7 @@ def find(name, path):
     for root, dirs, files in os.walk(path):
         if name in dirs:
             return os.path.join(root, name)
-path = find('Projeto', '/') + "/sio2018-p1g20"
-#path = find('sio2018-p1g20', '/')
+path = find('sio2018-p1g20', '/')
 
 class AuctionRepository:
     def __init__(self):

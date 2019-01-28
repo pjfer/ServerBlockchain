@@ -11,8 +11,7 @@ def find(name, path):
         if name in dirs:
             return os.path.join(root, name)
 
-path = find('Projeto', '/') + "/sio2018-p1g20/classes/"
-#path = find('sio2018-p1g20', '/') + "/classes/"
+path = find('sio2018-p1g20', '/') + "/classes/"
 
 class AuctionManager:
     def __init__(self):
