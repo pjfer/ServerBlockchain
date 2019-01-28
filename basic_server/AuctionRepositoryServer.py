@@ -1,10 +1,12 @@
-import socket, ssl, sys, traceback, json, os, secrets, base64
+import socket, ssl, sys, traceback, json, os, secrets, base64, fnmatch, PyKCS11
 from os import scandir
 from threading import Thread
 from cryptography import x509
-from datetime import datetime
 from collections import OrderedDict
+from urllib import request, response
+from datetime import datetime, timedelta
 from cryptography.x509.oid import NameOID
+from cryptography.x509.oid import ExtensionOID
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives import padding as syPadding
@@ -20,52 +22,68 @@ path = find('Projeto', '/') + "/sio2018-p1g20"
 sys.path.append('{}/classes'.format(path))
 from AuctionRepository import AuctionRepository
 
-def validation(cert):
-    return x509.load_pem_x509_certificate(cert, default_backend())
+def getCerts():
+    certs = {}
+    for c in open("/etc/ssl/certs/PTEID.pem", "rb").read().split(b"-----END CERTIFICATE-----")[0:-2]:
+        cert = x509.load_pem_x509_certificate((c.decode() + "-----END CERTIFICATE-----").encode(), default_backend())
+        if cert.not_valid_after > datetime.now()  and  cert.not_valid_before < datetime.now():
+            certs[cert.subject] = cert
+    cert = x509.load_der_x509_certificate(open("{}/certs_servers/ecraizestado.crt".format(path), "rb").read(), default_backend())
+    certs[cert.subject] = cert
+    #Verificar data dos certs
+    return certs
 
-def trustAnchor():
-    roots = dict()
+def getCRLs(certs):
+    CRLs = []
+    for cert in certs:
+        for i in cert.extensions.get_extension_for_oid(ExtensionOID.CRL_DISTRIBUTION_POINTS).value:
+            for dist_point in i.full_name:
+                if dist_point.value not in CRLs:
+                    CRLs.append(dist_point.value)
+    crls = []
+    for crl in CRLs:
+        crls.append(x509.load_der_x509_crl(request.urlopen(crl).read(), default_backend()))
+    return crls
 
-    for fil in scandir('/etc/ssl/certs'):
-        if '.pem' in fil.path:
-            with open(fil.path, 'rb') as f:
-                cert1 = f.read()
-                cert = validation(cert1)
-                if datetime.now() < cert.not_valid_after:
-                    roots[cert.subject] = cert
-    return roots
-
-def build_issues(chain, cert, user_roots, roots):
+def build_chain(chain, cert, intermediate_certs, checked_certs):
     chain.append(cert)
     issuer = cert.issuer
     subject = cert.subject
 
-    if issuer == subject and subject in roots.keys():
+    if issuer == subject and subject in checked_certs.keys():
         print("Chain completed!")
         return chain
 
-    if issuer in user_roots.keys():
-        return build_issues(chain, user_roots[issuer], user_roots, roots)
+    if issuer in intermediate_certs.keys():
+        return build_chain(chain, intermediate_certs[issuer], intermediate_certs, checked_certs)
 
-    if issuer in roots.keys():
-        return build_issues(chain, roots[issuer], user_roots, roots)
+    if issuer in checked_certs.keys():
+        return build_chain(chain, checked_certs[issuer], intermediate_certs, checked_certs)
 
     print("Chain not found!")
     return
 
-def validatePath(chain):
-    if len(chain) < 1:
-        return True
+def checkChain(chain, crls):
+    for cert in range(0, len(chain)-1):
+        purpose = chain[cert].extensions.get_extension_for_oid(ExtensionOID.KEY_USAGE).value
+        if cert == 0 and (purpose.digital_signature == False or purpose.content_commitment == False):
+            #Possível validação de key_encipherment, data_encipherment, key_agreement, decipher_only, encipher_only
+            return False
+        for crl in crls:
+            serial = chain[cert].serial_number
+            if False:#crl.get_revoked_certificate_by_serial_number(serial) != None:
+                return False
+        if chain[cert].not_valid_after < datetime.now()  or  chain[cert].not_valid_before > datetime.now():
+            return False
 
-    cert = chain[-1]
-    chain.remove(cert)
-    signature = cert.signature
-
-    #if not cert in crl:
-    if not cert in []:
-        return True and validatePath(chain)
-    else:
-        return False and validatePath(chain)
+        if cert != len(chain)-1 and chain[cert+1].extensions.get_extension_for_oid(ExtensionOID.KEY_USAGE).value.key_cert_sign == False:
+            return False
+        try:
+            pub_key = chain[cert+1].public_key()
+            pub_key.verify(chain[cert].signature, chain[cert].tbs_certificate_bytes, padding.PKCS1v15(), chain[cert].signature_hash_algorithm)
+        except Exception as e:
+            print(e)
+            return False
     return True
 
 def receive(conn):
@@ -107,9 +125,14 @@ def connAuctManSer():
     while True:
         newsocket, fromaddr = bindsocket.accept()
         connstream = context.wrap_socket(newsocket, server_side=True)
-        
+        firstTime = True
+
         try:
             while True:
+                if not firstTime:
+                    newsocket, fromaddr = bindsocket.accept()
+                    connstream = context.wrap_socket(newsocket, server_side=True)
+                firstTime = False
                 client_cert = connstream.getpeercert()
                 owner = client_cert['subject'][-1][-1][-1]
                 new_data = receive(connstream)
@@ -161,7 +184,7 @@ def connAuctManSer():
                     size += sys.getsizeof(size)
                     new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
                 elif id == 16:
-                    payload = auctionRepository.createAuction(message['Requester'], message['Name'], message['AuctionId'], message['Type'], message['Time_to_end'], message['Descr'], message['Dynamic_val'], message['Dynamic_encryp'], message['PubKey'], message['Dynamic_decryp'], message['Dynamic_winVal'])
+                    payload = auctionRepository.createAuction(message['Requester'], message['Name'], message['AuctionId'], message['Type'], message['Time_to_end'], message['Descr'], message['Dynamic_val'], message['Dynamic_encryp'], message['PubKey'], message['Dynamic_decryp'], message['Dynamic_winVal'], message['Owner'])
                     size = sys.getsizeof(header + str(payload))
                     size += sys.getsizeof(size)
                     new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
@@ -171,7 +194,6 @@ def connAuctManSer():
                     size += sys.getsizeof(size)
                     new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
 
-                print(new_message)
                 connstream.send(new_message)
                 print(connstream.version())
         except Exception:
@@ -182,12 +204,12 @@ def firstMessage(connstream, message):
     global aesgcm
     global flag
     global owner
-    assinPadd = asyPadding.PSS(mgf=asyPadding.MGF1(hashes.SHA256()), salt_length=asyPadding.PSS.MAX_LENGTH)
+    assinPadd = asyPadding.PKCS1v15()
     encrptPadd = asyPadding.OAEP(mgf=asyPadding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
     privKey = serialization.load_pem_private_key(open("{}/certs_servers/AuctionRepositoryKey.pem".format(path), "rb").read(), password=None, backend=default_backend())
     flag = False
     cert = base64.b64decode(message['Cert'])
-    cert = x509.load_pem_x509_certificate(cert, default_backend())
+    cert = x509.load_der_x509_certificate(cert, default_backend())
     user_roots = { cert.subject:cert }
     chain = build_issues([], cert, user_roots, roots)
     owner = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
@@ -196,7 +218,7 @@ def firstMessage(connstream, message):
     aesgcm = AESGCM(simKey)
 
     pubKeyCli = cert.public_key()
-    text_to_verify = cert.public_bytes(serialization.Encoding.PEM) + simKey
+    text_to_verify = cert.public_bytes(serialization.Encoding.DER) + simKey
 
     try:
         flag = pubKeyCli.verify(base64.b64decode(message['Assin']), text_to_verify, assinPadd, hashes.SHA256())
@@ -321,7 +343,11 @@ def connAuctMan():
 
 auctionRepository = AuctionRepository()
 header = 'HEAD / HTTP/1.0\r\nSize:'
-roots = trustAnchor()
+certs = getCerts()
+cert = None
+crls = getCRLs(certs.values())
+CA = x509.load_der_x509_certificate(open("{}/certs_servers/BaltimoreCyberTrustRoot.crt".format(path), "rb").read(), default_backend())
+certs[CA.subject] = CA
 aesgcm = ''
 flag = False
 owner = ''

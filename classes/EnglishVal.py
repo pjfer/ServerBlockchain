@@ -1,4 +1,4 @@
-if auctionId in self.auctions.keys():
+if auctionId in self.auctions.keys() and owner != self.auctions[auctionId][4]:
     bid_value = bid['Value']
     if self.last_bid != {} and bid_value > self.last_bid['Value'] and (bid_value - self.last_bid['Value']) >= self.min_value:
         bid = self.encrypt(auctionId, bid)
@@ -9,4 +9,4 @@ if auctionId in self.auctions.keys():
     else:
         payload = json.dumps({ 'Id' : 102, 'Reason' : 'Invalid bid!' })
 else:
-    payload = json.dumps({ 'Id' : 102, 'Reason' : 'Invalid Auction!' })
+    payload = json.dumps({ 'Id' : 102, 'Reason' : 'Invalid Auction or you are the owner of the Auction!' })

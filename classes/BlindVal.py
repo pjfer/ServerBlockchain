@@ -1,6 +1,6 @@
 self.possible_bids = 3
 
-if auctionId in self.auctions.keys():
+if auctionId in self.auctions.keys() and owner != self.auctions[auctionId][4]:
     if auctionId in self.bids_made.keys():
         self.bids_made[auctionId] += 1
     else:
@@ -11,4 +11,4 @@ if auctionId in self.auctions.keys():
     else:
         payload = json.dumps({ 'Id' : 102, 'Reason' : 'Invalid bid!' })
 else:
-    payload = json.dumps({ 'Id' : 102, 'Reason' : 'Invalid Auction!' })
+    payload = json.dumps({ 'Id' : 102, 'Reason' : 'Invalid Auction or you are the owner of the Auction!' })

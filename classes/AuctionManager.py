@@ -36,15 +36,15 @@ class AuctionManager:
         customVal = base64.b64decode(customVal).decode()
         customWinVal = base64.b64decode(customWinVal).decode()
         if customEncryp != 'None' and customDecryp != 'None':
-            self.auctions[self.n_auction+1] = customEncryp, customDecryp
+            self.auctions[self.n_auction+1] = open(path + customEncryp).read(), open(path + customDecryp).read()
         else:
             self.auctions[self.n_auction+1] = self.standEnc[type], self.standDec[type]
         if customVal != 'None':
-            self.auctions[self.n_auction+1] += customVal,
+            self.auctions[self.n_auction+1] += open(path + customVal).read(),
         else:
             self.auctions[self.n_auction+1] += self.standVer[type],
         if customWinVal != 'None':
-            self.auctions[self.n_auction+1] += customWinVal, owner
+            self.auctions[self.n_auction+1] += open(path + customWinVal).read(), owner
         else:
             self.auctions[self.n_auction+1] += self.standWinVal[type], owner
         self.n_auction += 1
@@ -53,22 +53,22 @@ class AuctionManager:
         decryptCode = bytes(self.auctions[self.n_auction][1], 'utf-8')
         valCode = bytes(self.auctions[self.n_auction][2], 'utf-8')
         winValCode = bytes(self.auctions[self.n_auction][3], 'utf-8')
-        return json.dumps({ 'Id' : 16, 'AuctionId' : self.n_auction, 'Name' : name, 'Type' : type, 'Dynamic_val' : base64.b64encode(valCode).decode('utf-8'), 'Dynamic_encryp' : base64.b64encode(encryptCode).decode('utf-8'), 'Dynamic_decryp' : base64.b64encode(decryptCode).decode('utf-8'), 'Dynamic_winVal' : base64.b64encode(winValCode).decode('utf-8'), 'Time_to_end' : str(time_to_end), 'Descr' : description, 'Requester' : "AuctionManager", 'PubKey' : self.auction_keys[self.n_auction][0] })
+        return json.dumps({ 'Id' : 16, 'AuctionId' : self.n_auction, 'Name' : name, 'Type' : type, 'Dynamic_val' : base64.b64encode(valCode).decode('utf-8'), 'Dynamic_encryp' : base64.b64encode(encryptCode).decode('utf-8'), 'Dynamic_decryp' : base64.b64encode(decryptCode).decode('utf-8'), 'Dynamic_winVal' : base64.b64encode(winValCode).decode('utf-8'), 'Time_to_end' : str(time_to_end), 'Descr' : description, 'Requester' : "AuctionManager", 'PubKey' : self.auction_keys[self.n_auction][0], 'Owner' : owner })
     
     def endAuction(self, auctionId, owner):
         if auctionId in self.auctions:
-            if self.auctions[auctionId][2] == owner:
+            if self.auctions[auctionId][4] == owner:
                 return json.dumps({ 'Id' : 15, 'AuctionId' : auctionId })
             return json.dumps({ 'Id' : 101, 'Reason' : 'No permissions!' })
         return json.dumps({ 'Id' : 101, 'Reason' : 'Invalid Auction!' })
 
-    def validateBid(self, auctionId, bid):
+    def validateBid(self, auctionId, bid, owner):
         exec(self.auctions[auctionId][2], locals(), globals())
         self.last_bid = bid
         return payload
 
     def ownersKey(self, auctionId, privKey, owner):
-        if owner == self.auctions[auctionId][2]:
+        if owner == self.auctions[auctionId][4]:
             self.auction_keys[auctionId].append((privKey,))
             return json.dumps({ 'Id' : 219 })
         return json.dumps({ 'Id' : 119, 'Reason' : 'No permissions!' })

@@ -61,7 +61,7 @@ class AuctionRepository:
 
     def validateBid(self, auctionId, bid):
         if auctionId in self.activeAuctions:
-            return json.dumps({ 'Id' : 2, 'AuctionId' : auctionId, 'Bid' : bid })
+            return json.dumps({ 'Id' : 2, 'AuctionId' : auctionId, 'Bid' : bid, 'AuctionOwner' : self.activeAuctions[auctionId].getFirstBlock().getOwner() })
         return json.dumps({ 'Id' : 102, 'Reason' : 'Invalid Auction!' })
             
     def placeBid(self, auctionId, bid):
@@ -84,7 +84,7 @@ class AuctionRepository:
                 text_to_sign = bid.getAuthor() + bid.getValue() + link + str(recvTime).encode() + json.dumps(challenge).encode()
                 assin = self.key.sign(text_to_sign, self.padding, hashes.SHA256())
                 #Cria o bloco e adiciona à blockchain
-                block = Block(bid, recvTime, link, challenge, assin)
+                block = Block(bid, recvTime, link, challenge, assin, None)
                 self.activeAuctions[auctionId].addToBlockChain(block)
 
                 sendTime = datetime.now()
@@ -104,14 +104,14 @@ class AuctionRepository:
         sendTime = datetime.now()
         text_to_sign = (str(recvTime) + str(sendTime) + "False").encode()
         ass = self.key.sign(text_to_sign, self.padding, hashes.SHA256())
-        return json.dumps({'Id' : 113, 'AuctionId' : auctionId, 'ReceiptId' : self.receiptId,'TimestampRec' : str(recvTime), 'TimestampEnv' : str(sendTime), 'Success' : 'False', 'Reason' : 'Auction as ended or does not exist', 'Sign' : base64.b64encode(ass).decode('utf-8') })
+        return json.dumps({'Id' : 113, 'AuctionId' : auctionId, 'ReceiptId' : self.receiptId,'TimestampRec' : str(recvTime), 'TimestampEnv' : str(sendTime), 'Success' : 'False', 'Reason' : 'Auction as ended or does not exist!', 'Sign' : base64.b64encode(ass).decode('utf-8') })
 
     def getChallenge(self, auctionId):
         if auctionId in self.activeAuctions:
             challenge = self.activeAuctions[auctionId].getLastBlock().getLink()
             nhash = "SHA256"
 
-            return json.dumps({ 'Id' : 214, 'Difficulty' : dificulty, 'Challenge' :  base64.b64encode(challenge).decode('utf-8'), 'Hash' : nhash })
+            return json.dumps({ 'Id' : 214, 'Difficulty' : self.difficulty, 'Challenge' :  base64.b64encode(challenge).decode('utf-8'), 'Hash' : nhash })
         
         return json.dumps({ 'Id' : 114, 'Reason' : 'Invalid Auction'})        
 
@@ -140,10 +140,10 @@ class AuctionRepository:
             text_to_sign = base64.b64decode(clientKey) + json.dumps(auctionManagerKeys).encode() + link 
             assin = self.key.sign(text_to_sign, self.padding, hashes.SHA256())
             #Cria o bloco e adiciona à blockchain
-            block = Block({'ClientKey' : clientKey, 'AuctManKeys': auctionManagerKeys} , None, link, None, assin)
+            block = Block({'ClientKey' : clientKey, 'AuctManKeys': auctionManagerKeys} , None, link, None, assin, None)
             self.finishedAuctions[auctionId].addToBlockChain(block)
 
-    def createAuction(self, requester, name, auctionId, type, endTime, descr, verDin, encDin, key, decDin, winValDin):
+    def createAuction(self, requester, name, auctionId, type, endTime, descr, verDin, encDin, key, decDin, winValDin, owner):
         if auctionId in self.activeAuctions or auctionId in self.finishedAuctions:
             return json.dumps({ 'Id' : 115, 'Reason' : 'Invalid AuctionId' })
         
@@ -159,7 +159,7 @@ class AuctionRepository:
             text_to_sign = json.dumps(verDin).encode() + json.dumps(encDin).encode() + link 	#Adicionar a chave pública à assinatura, customDecrypt e customWinVal
             assin = self.key.sign(text_to_sign, self.padding, hashes.SHA256())
             #Cria o bloco e adiciona à blockchain
-            block = Block({'VerDin' : verDin, 'EncDin': encDin, 'PubKey' : key, 'decDin' : decDin, 'winValDin' : winValDin } , None, link, None, assin)
+            block = Block({'VerDin' : verDin, 'EncDin': encDin, 'PubKey' : key, 'decDin' : decDin, 'winValDin' : winValDin } , None, link, None, assin, owner)
             auction.addToBlockChain(block)
             return json.dumps({ 'Id' : 215 })
         return json.dumps({ 'Id' : 115, 'Reason' : 'Invalid Requester' })

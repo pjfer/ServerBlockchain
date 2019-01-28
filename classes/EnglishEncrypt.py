@@ -1,4 +1,4 @@
-fields = ['Author', 'Key', 'Cert'] #Fields of the bid to encrypt
+fields = ['Author', 'Cert'] #Fields of the bid to encrypt
 key = secrets.token_bytes(32)
 backend = default_backend()
 algorithm = algorithms.AES(key)

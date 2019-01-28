@@ -20,17 +20,17 @@ def firstMessage():
     else:
         s.connect(('localhost', 2020))
         #s.connect(('192.168.1.3', 2019))
-    assinPadd = padding.PSS(mgf =padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH)
+    assinPadd = padding.PKCS1v15()
     encrptPadd = padding.OAEP(mgf =padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
     pubKeyMan = x509.load_pem_x509_certificate(open("{}/certs_servers/{}.crt".format(path, server), "rb").read(), backend=default_backend()).public_key()
     #Cria assinatura com o CC dos dados que vai enviar na mensagem
     session, cert, private_key, mechanism = client.getCCData()
-    text_to_sign = cert.public_bytes(serialization.Encoding.PEM) + simKey
+    text_to_sign = cert.public_bytes(serialization.Encoding.DER) + simKey
     assin = client.sign(session, private_key, text_to_sign, mechanism)
     #Encripta os campos necessários
     simKeyEnc = pubKeyMan.encrypt(simKey, encrptPadd)
     #Cria a mensagem a Enviar
-    payload = json.dumps({'Cert' : base64.b64encode(cert.public_bytes(serialization.Encoding.PEM)).decode('utf-8'), 'Key' : base64.b64encode(simKeyEnc).decode('utf-8'), 'Assin' : base64.b64encode(assin).decode('utf-8')})
+    payload = json.dumps({'Cert' : base64.b64encode(cert.public_bytes(serialization.Encoding.DER)).decode('utf-8'), 'Key' : base64.b64encode(simKeyEnc).decode('utf-8'), 'Assin' : base64.b64encode(assin).decode('utf-8')})
     size = sys.getsizeof(header + str(payload))
     size += sys.getsizeof(size)
     message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
@@ -43,7 +43,7 @@ def firstMessage():
 
     #Verifica a assinatura do Servidor
     try:
-        pubKeyMan.verify(base64.b64decode(message['Assin']), responseDec + nonce, assinPadd, hashes.SHA256())
+        pubKeyMan.verify(base64.b64decode(message['Assin']), responseDec + nonce, assinPadd, hashes.SHA1())
     except Exception:
         print("Invalid Message!")
 
@@ -145,8 +145,51 @@ while True:
                 first_block = responseDec['FirstBlock']
                 customEncrypt = first_block['Content']['EncDin']
                 pubKey = first_block['Content']['PubKey']
-                print(pubKey)
-                nonce, requestEnc = encrypt(client.createBid(auctionId, value, customEncrypt, pubKey))
+                nonce, requestEnc = encrypt(json.dumps({ 'Id' : 14, 'AuctionId' : auctionId }))
+                payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
+                size = sys.getsizeof(header + str(payload))
+                size += sys.getsizeof(size)
+                message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
+                s.sendall(message)
+                new_data = receive(s)
+                new_data = json.loads(new_data)
+                nonce, responseDec = decrypt(new_data['Nonce'], new_data['Message'])
+                if responseDec['Id'] == 214:
+                    link = base64.b64decode(responseDec['Challenge'])
+                    difficulty = responseDec['Difficulty']
+                    difficulty = 1
+                    nonce, requestEnc = encrypt(client.createBid(auctionId, value, difficulty, link, customEncrypt, pubKey))
+                    payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
+                    size = sys.getsizeof(header + str(payload))
+                    size += sys.getsizeof(size)
+                    message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
+                else:
+                    nonce, requestEnc = encrypt(new_data)
+                    payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
+                    size = sys.getsizeof(header + str(payload))
+                    size += sys.getsizeof(size)
+                    message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
+            else:
+                nonce, requestEnc = encrypt(new_data)
+                payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
+                size = sys.getsizeof(header + str(payload))
+                size += sys.getsizeof(size)
+                message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
+        else:
+            nonce, requestEnc = encrypt(json.dumps({ 'Id' : 14, 'AuctionId' : auctionId }))
+            payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
+            size = sys.getsizeof(header + str(payload))
+            size += sys.getsizeof(size)
+            message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
+            s.sendall(message)
+            new_data = receive(s)
+            new_data = json.loads(new_data)
+            nonce, responseDec = decrypt(new_data['Nonce'], new_data['Message'])
+            if responseDec['Id'] == 214:
+                link = base64.b64decode(responseDec['Challenge'])
+                difficulty = responseDec['Difficulty']
+                difficulty = 1
+                nonce, requestEnc = encrypt(client.createBid(auctionId, value, difficulty, link))
                 payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
                 size = sys.getsizeof(header + str(payload))
                 size += sys.getsizeof(size)
@@ -157,12 +200,6 @@ while True:
                 size = sys.getsizeof(header + str(payload))
                 size += sys.getsizeof(size)
                 message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
-        else:
-            nonce, requestEnc = encrypt(client.createBid(auctionId, value))
-            payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
-            size = sys.getsizeof(header + str(payload))
-            size += sys.getsizeof(size)
-            message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
     elif option == 3:
         auctionId = int(input("Auction ID = "))
         nonce, requestEnc = encrypt(client.requestAuction(auctionId))
