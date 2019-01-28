@@ -1,4 +1,4 @@
-import socket, ssl, sys, traceback, json, os, secrets, base64, fnmatch, PyKCS11
+import socket, ssl, sys, json, os, secrets, base64, fnmatch, PyKCS11
 from os import scandir
 from threading import Thread
 from cryptography import x509
@@ -26,7 +26,7 @@ def getCerts():
     certs = {}
     for c in open("/etc/ssl/certs/PTEID.pem", "rb").read().split(b"-----END CERTIFICATE-----")[0:-2]:
         cert = x509.load_pem_x509_certificate((c.decode() + "-----END CERTIFICATE-----").encode(), default_backend())
-        if cert.not_valid_after > datetime.now()  and  cert.not_valid_before < datetime.now():
+        if cert.not_valid_after > datetime.now() and cert.not_valid_before < datetime.now():
             certs[cert.subject] = cert
     cert = x509.load_der_x509_certificate(open("{}/certs_servers/ecraizestado.crt".format(path), "rb").read(), default_backend())
     certs[cert.subject] = cert
@@ -54,7 +54,7 @@ def build_chain(chain, cert, intermediate_certs, checked_certs):
         print("Chain completed!")
         return chain
 
-    if issuer in intermediate_certs.keys():
+    if issuer in intermediate_certs:
         return build_chain(chain, intermediate_certs[issuer], intermediate_certs, checked_certs)
 
     if issuer in checked_certs.keys():
@@ -140,6 +140,7 @@ def connAuctManSer():
                 id = message['Id']
                 new_message = b''
 
+                '''
                 if id == 10:
                     payload = auctionRepository.showActvAuct()
                     size = sys.getsizeof(header + str(payload))
@@ -178,7 +179,8 @@ def connAuctManSer():
                     size = sys.getsizeof(header + str(payload))
                     size += sys.getsizeof(size)
                     new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
-                elif id == 15:
+                '''
+                if id == 15:
                     payload = auctionRepository.closeAuction(message['Requester'], message['AuctionId'])
                     size = sys.getsizeof(header + str(payload))
                     size += sys.getsizeof(size)
@@ -188,16 +190,17 @@ def connAuctManSer():
                     size = sys.getsizeof(header + str(payload))
                     size += sys.getsizeof(size)
                     new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
+                '''
                 elif id == 20:
                     payload = auctionRepository.getFirstBlock(message['AuctionId'])
                     size = sys.getsizeof(header + str(payload))
                     size += sys.getsizeof(size)
                     new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
-
+                '''
                 connstream.send(new_message)
                 print(connstream.version())
         except Exception:
-            print(traceback.format_exc())
+            print()
             bindsocket.close()
 
 def firstMessage(connstream, message):
@@ -210,8 +213,9 @@ def firstMessage(connstream, message):
     flag = False
     cert = base64.b64decode(message['Cert'])
     cert = x509.load_der_x509_certificate(cert, default_backend())
-    user_roots = { cert.subject:cert }
-    chain = build_issues([], cert, user_roots, roots)
+    cert_chain = build_chain([], cert, [], certs)
+    if not checkChain(cert_chain, crls):
+        print("Chain Invalid!")
     owner = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
     simKey = privKey.decrypt(base64.b64decode(message['Key']), encrptPadd)
     nonce = secrets.token_bytes(16)
@@ -309,23 +313,25 @@ def connClient():
                         size = sys.getsizeof(header + str(payload))
                         size += sys.getsizeof(size)
                         new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
-                    elif id == 15:
-                        nonce, requestEnc = encrypt(nonce, auctionRepository.closeAuction(message['Requester'], message['AuctionId']))
-                        payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
-                        size = sys.getsizeof(header + str(payload))
-                        size += sys.getsizeof(size)
-                        new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
                     elif id == 20:
                         nonce, requestEnc = encrypt(nonce, auctionRepository.getFirstBlock(message['AuctionId']))
                         payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
                         size = sys.getsizeof(header + str(payload))
                         size += sys.getsizeof(size)
                         new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
+                    '''
+                    elif id == 15:
+                        nonce, requestEnc = encrypt(nonce, auctionRepository.closeAuction(message['Requester'], message['AuctionId']))
+                        payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
+                        size = sys.getsizeof(header + str(payload))
+                        size += sys.getsizeof(size)
+                        new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
+                    '''
 
                     connstream.send(new_message)
                     print("SENT")
             except Exception:
-                print(traceback.format_exc())
+                print()
                 connstream.close()
 
 def connAuctMan():
@@ -344,9 +350,8 @@ def connAuctMan():
 auctionRepository = AuctionRepository()
 header = 'HEAD / HTTP/1.0\r\nSize:'
 certs = getCerts()
-cert = None
 crls = getCRLs(certs.values())
-CA = x509.load_der_x509_certificate(open("{}/certs_servers/BaltimoreCyberTrustRoot.crt".format(path), "rb").read(), default_backend())
+CA = x509.load_der_x509_certificate(open("/etc/ssl/certs/BaltimoreCyberTrustRoot.crt".format(path), "rb").read(), default_backend())
 certs[CA.subject] = CA
 aesgcm = ''
 flag = False

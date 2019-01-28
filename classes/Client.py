@@ -34,33 +34,33 @@ class Client:
         repKey = x509.load_pem_x509_certificate(open("{}/certs_servers/AuctionRepository.crt".format(path), "rb").read() , backend=default_backend()).public_key()
         for i in range(len(chain)):
             if i != 0:
-            #Verificação dos links da blockchain
-            link = chain[i].getLink()
-            digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
-            previousLink = chain[i-1].getLink() + chain[i-1].getRepSign()
-            digest.update(previousLink)
-            if link !=  digest.finalize():
-                return False
-            try:
-                #Verificação da Assinatura do Repositório (para os blocos com bids)
+                #Verificação dos links da blockchain
                 link = chain[i].getLink()
-                bid =  chain[i].getContent()
-                challenge = chain[i].getChallenge()
-                time = chain[i].getTimestamp()
-                repKey.verify(chain[i].getRepSign(), bid.getAuthor() + bid.getValue() + link +str(time).encode()+ json.dumps(challenge).encode(), padd, hashes.SHA256())
-            except Exception as e:
-                print(e)
-                return False
-        else:
-            try:
-                #Verificação da Assinatura do Repositório para o primeiro bloco (com as regras do auction)
-                link = chain[i].getLink()
-                cont =  chain[i].getContent()
-                verDin = cont['VerDin']
-                encDin = cont['EncDin']
-                repKey.verify(chain[i].getRepSign(), json.dumps(verDin).encode() + json.dumps(encDin).encode() + link, padd, hashes.SHA256())
-            except Exception:
-                return False
+                digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
+                previousLink = chain[i-1].getLink() + chain[i-1].getRepSign()
+                digest.update(previousLink)
+                if link !=  digest.finalize():
+                    return False
+                try:
+                    #Verificação da Assinatura do Repositório (para os blocos com bids)
+                    link = chain[i].getLink()
+                    bid =  chain[i].getContent()
+                    challenge = chain[i].getChallenge()
+                    time = chain[i].getTimestamp()
+                    repKey.verify(chain[i].getRepSign(), bid.getAuthor() + bid.getValue() + link +str(time).encode()+ json.dumps(challenge).encode(), padd, hashes.SHA256())
+                except Exception as e:
+                    print(e)
+                    return False
+            else:
+                try:
+                    #Verificação da Assinatura do Repositório para o primeiro bloco (com as regras do auction)
+                    link = chain[i].getLink()
+                    cont =  chain[i].getContent()
+                    verDin = cont['VerDin']
+                    encDin = cont['EncDin']
+                    repKey.verify(chain[i].getRepSign(), json.dumps(verDin).encode() + json.dumps(encDin).encode() + link, padd, hashes.SHA256())
+                except Exception:
+                    return False
         return True
 
     def verifyChain(self, auctionId, chain, user):
@@ -149,10 +149,10 @@ class Client:
         author = cert_der.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value.encode()
         timestamp = datetime.now().timestamp()
         criptAnswer = self.doChallenge(difficulty, link)
-        text_to_sign = author + bytes(str(timestamp), 'utf-8') + bytes(str(criptAnswer), 'utf-8') + self.pubKey.public_bytes(encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo) + cert_der.public_bytes(serialization.Encoding.DER)
+        text_to_sign = author + bytes(str(value), 'utf-8') + bytes(str(timestamp), 'utf-8') + bytes(str(criptAnswer), 'utf-8') + self.pubKey.public_bytes(encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo) + cert_der.public_bytes(serialization.Encoding.DER)
         signature = self.sign(session, private_key, text_to_sign, mechanism)
         bid = Bid(author, value, str(timestamp), criptAnswer, self.pubKey.public_bytes(encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo), cert_der.public_bytes(serialization.Encoding.DER), signature)
-        bid = self.encrypt(auctionId, bid, pubKey)
+        bid = self.encrypt(auctionId, bid)
         message = json.dumps({ 'Id' : 13, 'AuctionId' : auctionId, 'Bid' : bid })
         return message
 
@@ -177,7 +177,7 @@ class Client:
     def getPubKey(self):
         return self.pubKey
 
-    def encrypt(self, auctionId, bid, key=None):
+    def encrypt(self, auctionId, bid):
         bid = bid.getJson()
         exec(self.customEncrypt, locals(), globals())
         return bid

@@ -1,4 +1,4 @@
-fields = ['Author', 'Cert'] #Fields of the bid to encrypt
+fields = ['Author', 'Cert', 'Signature'] #Fields of the bid to encrypt
 key = secrets.token_bytes(32)
 backend = default_backend()
 algorithm = algorithms.AES(key)
@@ -19,5 +19,6 @@ for field in fields:
 
 if self.pubKey != b'':
     self.key = key
-    ct = self.pubKey.encrypt(json.dumps({ 'Key' : base64.b64encode(self.key).decode('utf-8'), 'IV_list' : iv_list }).encode(), asyPadding.OAEP(mgf=asyPadding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None))
+    ct = self.pubKey.encrypt(self.key, asyPadding.OAEP(mgf=asyPadding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None))
     bid['Key'] = base64.b64encode(ct).decode('utf-8')
+    bid['IV_list'] = iv_list

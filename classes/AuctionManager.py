@@ -17,10 +17,10 @@ class AuctionManager:
     def __init__(self):
         self.auctions = {} #Contém o código a executar em cada auction (val, enc) e o dono do auction (owner)
         self.n_auction = -1
-        self.standVer = [open(path + 'EnglishVal.py').read(), open(path + 'BlindVal.py').read()] #Contém o código de verificação standard
-        self.standEnc = [open(path + 'EnglishEncrypt.py').read(), open(path + 'BlindEncrypt.py').read()] #Contém o código de encriptação standard
-        self.standDec = [open(path + 'EnglishDecrypt.py').read(), open(path + 'BlindDecrypt.py').read()]
-        self.standWinVal = [open(path + 'EnglishWinVal.py').read(), open(path + 'BlindWinVal.py').read()]
+        self.standVer = [open('{}EnglishVal.py'.format(path)).read(), open('{}BlindVal.py'.format(path)).read()] #Contém o código de verificação standard
+        self.standEnc = [open('{}EnglishEncrypt.py'.format(path)).read(), open('{}BlindEncrypt.py'.format(path)).read()] #Contém o código de encriptação standard
+        self.standDec = [open('{}EnglishDecrypt.py'.format(path)).read(), open('{}BlindDecrypt.py'.format(path)).read()]
+        self.standWinVal = [open('{}EnglishWinVal.py'.format(path)).read(), open('{}BlindWinVal.py'.format(path)).read()]
         self.auction_keys = {} #Contém as chaves de encriptação para cada auction {id : []}
         self.bids_made = {}
         self.last_bid = {}
@@ -58,7 +58,7 @@ class AuctionManager:
     def endAuction(self, auctionId, owner):
         if auctionId in self.auctions:
             if self.auctions[auctionId][4] == owner:
-                return json.dumps({ 'Id' : 15, 'AuctionId' : auctionId })
+                return json.dumps({ 'Id' : 15, 'AuctionId' : auctionId, 'Requester' : 'AuctionManager' })
             return json.dumps({ 'Id' : 101, 'Reason' : 'No permissions!' })
         return json.dumps({ 'Id' : 101, 'Reason' : 'Invalid Auction!' })
 

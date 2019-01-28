@@ -1,10 +1,12 @@
-import socket, ssl, sys, traceback, json, os, secrets, base64
+import socket, ssl, sys, json, os, secrets, base64, fnmatch, PyKCS11
 from os import scandir
 from threading import Thread
 from cryptography import x509
-from datetime import datetime
 from collections import OrderedDict
+from urllib import request, response
+from datetime import datetime, timedelta
 from cryptography.x509.oid import NameOID
+from cryptography.x509.oid import ExtensionOID
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives import padding as syPadding
@@ -24,7 +26,7 @@ def getCerts():
     certs = {}
     for c in open("/etc/ssl/certs/PTEID.pem", "rb").read().split(b"-----END CERTIFICATE-----")[0:-2]:
         cert = x509.load_pem_x509_certificate((c.decode() + "-----END CERTIFICATE-----").encode(), default_backend())
-        if cert.not_valid_after > datetime.now()  and  cert.not_valid_before < datetime.now():
+        if cert.not_valid_after > datetime.now() and cert.not_valid_before < datetime.now():
             certs[cert.subject] = cert
     cert = x509.load_der_x509_certificate(open("{}/certs_servers/ecraizestado.crt".format(path), "rb").read(), default_backend())
     certs[cert.subject] = cert
@@ -52,7 +54,7 @@ def build_chain(chain, cert, intermediate_certs, checked_certs):
         print("Chain completed!")
         return chain
 
-    if issuer in intermediate_certs.keys():
+    if issuer in intermediate_certs:
         return build_chain(chain, intermediate_certs[issuer], intermediate_certs, checked_certs)
 
     if issuer in checked_certs.keys():
@@ -138,12 +140,14 @@ def connAuctReposSer():
                 id = message['Id']
                 new_message = b''
 
+                '''
                 if id == 1:
                     payload = auctionManager.endAuction(message['AuctionId'], owner)
                     size = sys.getsizeof(header + str(payload))
                     size += sys.getsizeof(size)
                     new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
-                elif id == 2:
+                '''
+                if id == 2:
                     payload = auctionManager.validateBid(message['AuctionId'], message['Bid'], message['AuctionOwner'])
                     size = sys.getsizeof(header + str(payload))
                     size += sys.getsizeof(size)
@@ -158,7 +162,7 @@ def connAuctReposSer():
                 print("SENT")
                 print(connstream.version())
         except Exception:
-            print(traceback.format_exc())
+            print()
             bindsocket.close()
 
 def firstMessage(connstream, message):
@@ -171,8 +175,9 @@ def firstMessage(connstream, message):
     flag = False
     cert = base64.b64decode(message['Cert'])
     cert = x509.load_der_x509_certificate(cert, default_backend())
-    user_roots = { cert.subject:cert }
-    chain = build_issues([], cert, user_roots, roots)
+    cert_chain = build_chain([], cert, [], certs)
+    if not checkChain(cert_chain, crls):
+        print("Chain Invalid!")
     owner = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
     simKey = privKey.decrypt(base64.b64decode(message['Key']), encrptPadd)
     aesgcm = AESGCM(simKey)
@@ -234,7 +239,7 @@ def connClient():
                         conn = connAuctRepos()
                         conn.sendall(new_message)
                         new_data = json.loads(receive(conn))
-                        if new_data['Id'] != 215:
+                        if new_data['Id'] != 216:
                             auctionManager.clear()
                         nonce, requestEnc = encrypt(nonce, json.dumps(new_data))
                         payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
@@ -242,11 +247,19 @@ def connClient():
                         size += sys.getsizeof(size)
                         new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
                     elif id == 1:
-                        nonce, requestEnc = encrypt(nonce, auctionManager.endAuction(message['AuctionId']))
+                        payload = auctionManager.endAuction(message['AuctionId'], owner)
+                        size = sys.getsizeof(header + str(payload))
+                        size += sys.getsizeof(size)
+                        new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
+                        conn = connAuctRepos()
+                        conn.sendall(new_message)
+                        new_data = json.loads(receive(conn))
+                        nonce, requestEnc = encrypt(nonce, json.dumps(new_data))
                         payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
                         size = sys.getsizeof(header + str(payload))
                         size += sys.getsizeof(size)
                         new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
+                    '''
                     elif id == 2:
                         nonce, requestEnc = encrypt(nonce, auctionManager.validateBid(message['AuctionId'], message['Bid']))
                         payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
@@ -259,11 +272,11 @@ def connClient():
                         size = sys.getsizeof(header + str(payload))
                         size += sys.getsizeof(size)
                         new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
-
+                    '''
                     connstream.sendall(new_message)
                     print("SENT")
             except Exception:
-                print(traceback.format_exc())
+                print()
                 connstream.close()
 
 def connAuctRepos():
@@ -282,9 +295,8 @@ def connAuctRepos():
 auctionManager = AuctionManager()
 header = 'HEAD / HTTP/1.0\r\nSize:'
 certs = getCerts()
-cert = None
 crls = getCRLs(certs.values())
-CA = x509.load_der_x509_certificate(open("{}/certs_servers/BaltimoreCyberTrustRoot.crt".format(path), "rb").read(), default_backend())
+CA = x509.load_der_x509_certificate(open("/etc/ssl/certs/BaltimoreCyberTrustRoot.crt".format(path), "rb").read(), default_backend())
 certs[CA.subject] = CA
 aesgcm = ''
 flag = False

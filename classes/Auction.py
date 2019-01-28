@@ -2,7 +2,7 @@ import Block, json
 from datetime import datetime
 
 class Auction:
-    def  __init__(self,name, type, auctionId, endTime, desc):
+    def  __init__(self,name, type, auctionId, endTime, desc, owner):
         self.name = name
         self.auctionId = auctionId
         self.endTime = endTime
@@ -10,6 +10,7 @@ class Auction:
         self.blockchain = []
         self.winner = ''
         self.type = type
+        self.owner = owner
 
     def setWinner(self, winner):
         self.winner = winner
@@ -46,6 +47,9 @@ class Auction:
 
     def getType(self):
         return self.type
+
+    def getOwner(self):
+        return self.owner
     
     def getJson(self):
         return { 'AuctionId' : self.auctionId , 'Blockchain' : self.blockToJson() }

@@ -61,7 +61,7 @@ class AuctionRepository:
 
     def validateBid(self, auctionId, bid):
         if auctionId in self.activeAuctions:
-            return json.dumps({ 'Id' : 2, 'AuctionId' : auctionId, 'Bid' : bid, 'AuctionOwner' : self.activeAuctions[auctionId].getFirstBlock().getOwner() })
+            return json.dumps({ 'Id' : 2, 'AuctionId' : auctionId, 'Bid' : bid, 'AuctionOwner' : self.activeAuctions[auctionId].getOwner() })
         return json.dumps({ 'Id' : 102, 'Reason' : 'Invalid Auction!' })
             
     def placeBid(self, auctionId, bid):
@@ -84,7 +84,7 @@ class AuctionRepository:
                 text_to_sign = bid.getAuthor() + bid.getValue() + link + str(recvTime).encode() + json.dumps(challenge).encode()
                 assin = self.key.sign(text_to_sign, self.padding, hashes.SHA256())
                 #Cria o bloco e adiciona à blockchain
-                block = Block(bid, recvTime, link, challenge, assin, None)
+                block = Block(bid, recvTime, link, challenge, assin)
                 self.activeAuctions[auctionId].addToBlockChain(block)
 
                 sendTime = datetime.now()
@@ -117,17 +117,13 @@ class AuctionRepository:
 
     def closeAuction(self, requester, auctionId):
         if requester == "AuctionManager": 
-            
             if auctionId in self.activeAuctions:
-                
                 self.activeAuctions[auctionId].close()
                 self.finishedAuctions[auctionId] = self.activeAuctions[auctionId]
                 self.activeAuctions.pop(auctionId)
-                return json.dumps({ 'Id' : 216 })
-            
-            return json.dumps({ 'Id' : 116, 'Reason' : 'Invalid Auction' })
-        
-        return json.dumps({ 'Id' : 116, 'Reason' : 'Invalid Requester' })
+                return json.dumps({ 'Id' : 215 })
+            return json.dumps({ 'Id' : 115, 'Reason' : 'Invalid Auction' })
+        return json.dumps({ 'Id' : 115, 'Reason' : 'Invalid Requester' })
 
     def addKeys(self,auctionId, clientKey, auctionManagerKeys):
         if auctionId in self.finishedAuctions:
@@ -140,15 +136,15 @@ class AuctionRepository:
             text_to_sign = base64.b64decode(clientKey) + json.dumps(auctionManagerKeys).encode() + link 
             assin = self.key.sign(text_to_sign, self.padding, hashes.SHA256())
             #Cria o bloco e adiciona à blockchain
-            block = Block({'ClientKey' : clientKey, 'AuctManKeys': auctionManagerKeys} , None, link, None, assin, None)
+            block = Block({'ClientKey' : clientKey, 'AuctManKeys': auctionManagerKeys} , None, link, None, assin)
             self.finishedAuctions[auctionId].addToBlockChain(block)
 
     def createAuction(self, requester, name, auctionId, type, endTime, descr, verDin, encDin, key, decDin, winValDin, owner):
         if auctionId in self.activeAuctions or auctionId in self.finishedAuctions:
-            return json.dumps({ 'Id' : 115, 'Reason' : 'Invalid AuctionId' })
+            return json.dumps({ 'Id' : 116, 'Reason' : 'Invalid AuctionId' })
         
         if requester == "AuctionManager":
-            auction = Auction(name, type, auctionId, endTime, descr)
+            auction = Auction(name, type, auctionId, endTime, descr, owner)
             self.activeAuctions[auctionId] = auction
             digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
 
@@ -159,10 +155,10 @@ class AuctionRepository:
             text_to_sign = json.dumps(verDin).encode() + json.dumps(encDin).encode() + link 	#Adicionar a chave pública à assinatura, customDecrypt e customWinVal
             assin = self.key.sign(text_to_sign, self.padding, hashes.SHA256())
             #Cria o bloco e adiciona à blockchain
-            block = Block({'VerDin' : verDin, 'EncDin': encDin, 'PubKey' : key, 'decDin' : decDin, 'winValDin' : winValDin } , None, link, None, assin, owner)
+            block = Block({'VerDin' : verDin, 'EncDin': encDin, 'PubKey' : key, 'decDin' : decDin, 'winValDin' : winValDin } , None, link, None, assin)
             auction.addToBlockChain(block)
-            return json.dumps({ 'Id' : 215 })
-        return json.dumps({ 'Id' : 115, 'Reason' : 'Invalid Requester' })
+            return json.dumps({ 'Id' : 216 })
+        return json.dumps({ 'Id' : 116, 'Reason' : 'Invalid Requester' })
 
     def verifyChallenge(self, auctionId, bid):
         digest = hashes.Hash(hashes.SHA256(), backend=default_backend())

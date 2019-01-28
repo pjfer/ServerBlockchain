@@ -99,7 +99,7 @@ while True:
         s.close()
         break
 
-    if option != 1:
+    if option != 1 and option != 6:
         if server == '' or server == 'AuctionManager':
             if server == 'AuctionManager':
                 s.close()
