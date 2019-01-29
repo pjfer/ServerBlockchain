@@ -56,10 +56,7 @@ class Client:
         return message
 
     def sendPrivKey(self, auctionId):
-        if self.privKey != b'':
-            return json.dumps({ 'Id' : 19, 'AuctionId' : auctionId, 'ClientKey' : base64.b64encode(self.privKey.private_bytes(encoding=serialization.Encoding.PEM, format=serialization.TraditionalOpenSSL, encryption_algorithm=serialization.NoEncryption())).decode('utf-8') })
-        else:
-            return json.dumps({ 'Id' : 19, 'AuctionId' : auctionId, 'ClientKey' : base64.b64encode(self.privKey).decode('utf-8') })
+        return json.dumps({ 'Id' : 19, 'AuctionId' : auctionId, 'ClientKey' : base64.b64encode(self.privKey).decode('utf-8') })
 
     def requestAuction(self, auctionId):
         return json.dumps({ 'Id' : 11, 'AuctionId' : auctionId })

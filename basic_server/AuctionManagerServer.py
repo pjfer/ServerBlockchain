@@ -142,6 +142,7 @@ def connAuctReposSer():
                     size = sys.getsizeof(header + str(payload))
                     size += sys.getsizeof(size)
                     new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
+                    print(new_message)
 
                 connstream.send(new_message)
                 print("SENT")

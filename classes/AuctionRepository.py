@@ -179,11 +179,11 @@ class AuctionRepository:
     def verifyChallenge(self, auctionId, bid):
         digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
         response = bid['CriptAnswer']
-        nonce = response['Nonce']
+        nonce = base64.b64decode(response['Nonce'])
         digest.update(nonce.encode() + self.activeAuctions[auctionId].getLastBlock().getLink())
         result =  digest.finalize()
         
-        if result[0:self.difficulty] == b'0'*self.difficulty and result == response['Response']:
+        if result[0:self.difficulty] == b'0'*self.difficulty and result == base64.b64decode(response['Response']):
             return True
         return False
 

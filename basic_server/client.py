@@ -167,7 +167,7 @@ while True:
                     if responseDec['Id'] == 213:
                         rec = responseDec
                         client.saveAndValidReceipt(rec)
-                        message = b''
+                    message = b''
                 else:
                     nonce, requestEnc = encrypt(json.dumps(new_data))
                     payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
@@ -198,6 +198,14 @@ while True:
                 size = sys.getsizeof(header + str(payload))
                 size += sys.getsizeof(size)
                 message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
+                s.sendall(message)
+                new_data = receive(s)
+                new_data = json.loads(new_data)
+                nonce, responseDec = decrypt(new_data['Nonce'], new_data['Message'])
+                if responseDec['Id'] == 213:
+                    rec = responseDec
+                    client.saveAndValidReceipt(rec)
+                message = b''
             else:
                 nonce, requestEnc = encrypt(json.dumps(new_data))
                 payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
@@ -260,7 +268,6 @@ while True:
 
     if message != b'':
         s.sendall(message)
-        print(message)
         print("SENT")
         data = receive(s)
         data = json.loads(data)
