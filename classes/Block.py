@@ -25,6 +25,4 @@ class Block:
         return self.repSign
 
     def getJson(self):
-        if isinstance(self.content, Bid):
-            return { 'Content' : self.content.getJson(), 'Timestamp' : str(self.timestamp), 'Link' : base64.b64encode(self.link).decode('utf-8'), 'Challenge' : self.challenge, 'RepSign' : base64.b64encode(self.repSign).decode('utf-8') }
-        return {'Content' : self.content, 'Timestamp' : None, 'Link' : base64.b64encode(self.link).decode('utf-8'), 'Challenge' : None, 'RepSign' : base64.b64encode(self.repSign).decode('utf-8') }
+        return { 'Content' : self.content, 'Timestamp' : str(self.timestamp), 'Link' : base64.b64encode(self.link).decode('utf-8'), 'Challenge' : self.challenge, 'RepSign' :  base64.b64encode(self.repSign).decode('utf-8') }

@@ -1,10 +1,11 @@
 import json, secrets, base64, os, sys, random, time
 from threading import Thread
-from threading import Lock
 from datetime import datetime
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives import padding as syPadding
 from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding as asyPadding
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from Bid import Bid
 from Block import Block
 from Auction import Auction
@@ -20,9 +21,9 @@ class AuctionRepository:
         self.activeAuctions = {} #contém os auctions ativos {id, auction}
         self.finishedAuctions = {} #contém os auctions acabados {id, auction}
         self.key = serialization.load_pem_private_key(open("{}/certs_servers/AuctionRepositoryKey.pem".format(path), "rb").read(), password = None, backend=default_backend())
-        self.padding = padding.PSS(mgf =padding.MGF1(hashes.SHA256()), salt_length = padding.PSS.MAX_LENGTH)
+        self.padding = asyPadding.PSS(mgf =asyPadding.MGF1(hashes.SHA256()), salt_length = asyPadding.PSS.MAX_LENGTH)
         self.receiptId = 0
-        self.difficulty = random.randint(1, 3)
+        self.difficulty = random.randint(1, 2)
         p = Thread(target=self.backgroundChecker)
         p.start()
 
@@ -58,7 +59,7 @@ class AuctionRepository:
         return json.dumps({ 'Id' : 120, 'Reason' : 'Invalid Auction!' })
         
     def showWinner(self, auctionId):
-        if auctionId in self.finishedAuctions and not self.finishedAuctions[auctionId].getWinner() ==  None:
+        if auctionId in self.finishedAuctions and not self.finishedAuctions[auctionId].getWinner() ==  "":
             return json.dumps({ 'Id':212, 'Winner': self.finishedAuctions[auctionId].getWinner() })
         return json.dumps({ 'Id':112, 'Reason':'Auction does not exist or it isnt finished'})
 
@@ -94,7 +95,7 @@ class AuctionRepository:
                 #Cria a mensagem de resposta (com o receipt).
                 text_to_sign = (str(recvTime) + str(sendTime) + "True" + str(self.activeAuctions[auctionId].getLastPosition())).encode()
                 ass = self.key.sign(text_to_sign, self.padding, hashes.SHA256())
-                self.difficulty = random.randint(0, 3)
+                self.difficulty = random.randint(1, 2)
                 return json.dumps({ 'Id' : 213 , 'AuctionId' : auctionId, 'ReceiptId' : self.receiptId, 'TimestampRec' : str(recvTime), 'TimestampEnv' : str(sendTime), 'Success' : 'True', 'Pos' : self.activeAuctions[auctionId].getLastPosition(), 'Sign' : base64.b64encode(ass).decode('utf-8') })
 
             #Se o desafio não for comprido
@@ -119,7 +120,7 @@ class AuctionRepository:
         return json.dumps({ 'Id' : 114, 'Reason' : 'Invalid Auction'}) 
 
     def closeAuction(self, requester, auctionId):
-        if requester == "AuctionManager": 
+        if requester == "AuctionManagerCli": 
             if auctionId in self.activeAuctions:
                 self.activeAuctions[auctionId].close()
                 self.finishedAuctions[auctionId] = self.activeAuctions[auctionId]
@@ -141,11 +142,10 @@ class AuctionRepository:
             #Cria o bloco e adiciona à blockchain
             block = Block({'ClientKey' : clientKey, 'AuctManKeys': auctionManagerKeys} , None, link, None, assin)
             self.finishedAuctions[auctionId].addToBlockChain(block)
-            winValCode = base64.b64decode(self.finishedAuctions[auctionId].getFirstBlock()['Content']['WinVal'])
-            print(winValCode)
-            winner = ''
+            chain = list(self.finishedAuctions[auctionId].getBlockChain())
+            winValCode = base64.b64decode(self.finishedAuctions[auctionId].getFirstBlock().getContent()['WinValDin'])
             exec(winValCode, locals(), globals())
-            self.finishedAuctions[auctionId].setWinner(winner)
+            self.finishedAuctions[auctionId].setWinner(winner.decode())
             return json.dumps({ 'Id' : 219 })
         else:
             return json.dumps({ 'Id' : 119, 'Reason' : 'Auction is not finnished!' })

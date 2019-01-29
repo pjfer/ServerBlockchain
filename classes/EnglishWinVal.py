@@ -1,30 +1,22 @@
-padd = asyPadding.OAEP(mgf=asyPadding.MGF1(algorithm=hashes.SHA256()),algorithm=hashes.SHA256(),label=None)
+padd = asyPadding.OAEP(mgf=asyPadding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
 keys = chain[-1].getContent()
 manKeys = keys['AuctManKeys']
 privKey = keys['ClientKey']
 key, iv_list = (manKeys[-1][0], manKeys[-1][1])
-decrypt = open('EnglishDecrypt.py').read()
+decrypt = base64.b64decode(chain[0].getContent()['DecDin'])
 
 winnerBlock = chain[-2]
-bid = winner.getContent().getJson()
+bid = dict(winnerBlock.getContent())
 
-exec(decrypt, locals(), globals())
+exec(decrypt, locals())
 
 keyPriv = serialization.load_pem_private_key(base64.b64decode(privKey) , password = None, backend=default_backend())
-keys= keyPriv.decrypt(base64.b64decode(bid['Key']), padd)
-key = base64.b64decode(keys['Key'])
+key = keyPriv.decrypt(base64.b64decode(bid['Key']), padd)
+key = base64.b64encode(key).decode('utf-8')
+for i in ['Author', 'Cert', 'Signature']:
+    bid[i] = base64.b64encode(bid[i]).decode('utf-8')
 
-iv_list = []
-for i in keys['IV_list']
-    iv_list.append(base64.b64decode(i))
+iv_list = bid['IV_list']
 
-exec(decrypt, locals(), globals())
+exec(decrypt, locals())
 winner = bid['Author']
-
-
-
-
-
-
-
-

@@ -1,4 +1,4 @@
-import socket, ssl, sys, json, os, secrets, base64, fnmatch, PyKCS11, traceback
+import socket, ssl, sys, json, os, secrets, base64, fnmatch, PyKCS11
 from os import scandir
 from threading import Thread
 from cryptography import x509

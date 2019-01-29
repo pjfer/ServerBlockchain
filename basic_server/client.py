@@ -224,10 +224,12 @@ while True:
         new_data = json.loads(data)
         nonce, responseDec = decrypt(new_data['Nonce'], new_data['Message'])
         if responseDec['Id'] == 18 and responseDec['Status'] == False:
-            client.verifyEndedChain(auctionId, responseDec['Chain'], responseDec['Winner'])
+            client.verifyEndedChain(auctionId, responseDec['Chain']['Blockchain'], responseDec['Winner'])
+            print("Chain Verified with Success!")
             message = b''
         elif responseDec['Id'] == 18 and responseDec['Status'] == True:
             client.verifyOnChain(responseDec['Chain'])
+            print("Chain Verified with Success!")
             message = b''
         else:
             print("Auction does not exist!")

@@ -1,4 +1,4 @@
-import sys, PyKCS11, json, secrets, base64, os
+import sys, PyKCS11, json, secrets, base64, os, fnmatch
 from datetime import datetime
 from cryptography import x509
 from cryptography.x509.oid import NameOID
@@ -56,7 +56,10 @@ class Client:
         return message
 
     def sendPrivKey(self, auctionId):
-        return json.dumps({ 'Id' : 19, 'AuctionId' : auctionId, 'ClientKey' : base64.b64encode(self.privKey).decode('utf-8') })
+        if self.privKey != b'':
+            return json.dumps({ 'Id' : 19, 'AuctionId' : auctionId, 'ClientKey' : base64.b64encode(self.privKey.private_bytes(encoding=serialization.Encoding.PEM, format=serialization.PrivateFormat.TraditionalOpenSSL, encryption_algorithm=serialization.NoEncryption())).decode('utf-8') })
+        else:
+            return json.dumps({ 'Id' : 19, 'AuctionId' : auctionId, 'ClientKey' : base64.b64encode(self.privKey).decode('utf-8') })
 
     def requestAuction(self, auctionId):
         return json.dumps({ 'Id' : 11, 'AuctionId' : auctionId })
@@ -78,6 +81,7 @@ class Client:
 
     def encrypt(self, auctionId, bid):
         bid = bid.getJson()
+        key = secrets.token_bytes(32)
         exec(self.customEncrypt, locals(), globals())
         return bid
 
@@ -153,30 +157,30 @@ class Client:
         for i in range(len(chain)):
             if i != 0:
                 #Verificação dos links da blockchain
-                link = chain[i].getLink()
+                link = chain[i]['Link']
                 digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
-                previousLink = chain[i-1].getLink() + chain[i-1].getRepSign()
+                previousLink = chain[i-1]['Link'] + chain[i-1]['RepSign']
                 digest.update(previousLink)
                 if link !=  digest.finalize():
                     return False
                 try:
                     #Verificação da Assinatura do Repositório (para os blocos com bids)
-                    link = chain[i].getLink()
-                    bid =  chain[i].getContent()
-                    challenge = chain[i].getChallenge()
-                    time = chain[i].getTimestamp()
-                    repKey.verify(chain[i].getRepSign(), bid.getAuthor() + bid.getValue() + link +str(time).encode()+ json.dumps(challenge).encode(), padd, hashes.SHA256())
+                    link = chain[i]['Link']
+                    bid =  chain[i]['Content']
+                    challenge = chain[i]['Challenge']
+                    time = chain[i]['Timestamp']
+                    repKey.verify(chain[i]['RepSign'], base64.b64decode(bid['Signature']) + str(time).encode() + json.dumps(challenge).encode(), padd, hashes.SHA256())
                 except Exception as e:
                     print(e)
                     return False
             else:
                 try:
                     #Verificação da Assinatura do Repositório para o primeiro bloco (com as regras do auction)
-                    link = chain[i].getLink()
-                    cont =  chain[i].getContent()
+                    link = chain[i]['Link']
+                    cont =  chain[i]['Content']
                     verDin = cont['VerDin']
                     encDin = cont['EncDin']
-                    repKey.verify(chain[i].getRepSign(), json.dumps(verDin).encode() + json.dumps(encDin).encode() + link, padd, hashes.SHA256())
+                    repKey.verify(chain[i]['RepSign'], json.dumps(verDin).encode() + json.dumps(encDin).encode() + link, padd, hashes.SHA256())
                 except Exception:
                     return False
             return True
@@ -186,20 +190,19 @@ class Client:
         #Load da Chave do Repository
         padd = asyPadding.PSS(mgf=asyPadding.MGF1(hashes.SHA256()), salt_length=asyPadding.PSS.MAX_LENGTH)
         repKey = x509.load_pem_x509_certificate(open("{}/certs_servers/AuctionRepository.crt".format(path), "rb").read() , backend=default_backend()).public_key()
-        keys = chain[-1].getContent()
-        manKeys = keys['AuctManKeys']
-        privKey = keys['ClientKey']
+        manKeys = chain[-1]['Content']['AuctManKeys']
+        privKey = chain[-1]['Content']['ClientKey']
         #Perceber se é necessário ou não colocar em que base etc.
         keyPriv = serialization.load_pem_private_key(base64.b64decode(privKey), password=None, backend=default_backend())
-        decrypt = base64.b64decode(chain[0].getContent()['DecDin'])
-        valDin = base64.b64decode(chain[0].getContent()['VerDin'])
-        winVal = base64.b64decode(chain[0].getContent()['WinValDin'])
+        decrypt = base64.b64decode(chain[0]['Content']['DecDin'])
+        valDin = base64.b64decode(chain[0]['Content']['VerDin'])
+        winVal = base64.b64decode(chain[0]['Content']['WinValDin'])
 
         #Load dos receipts do cliente
         receipts = fnmatch.filter(os.listdir('{}/receipts/'.format(path)), 'Auction{}_*.receipt'.format(auctionId))
         pos = []
         for i in receipts:
-            f = open(i)
+            f = open('{}/receipts/{}'.format(path, i))
             receipt = json.loads(f.read())
             if receipt['Success']:
                 pos.append(receipt['Pos'])

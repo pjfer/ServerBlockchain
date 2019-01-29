@@ -1,4 +1,4 @@
-import socket, ssl, sys, json, os, secrets, base64, fnmatch, PyKCS11, traceback
+import socket, ssl, sys, json, os, secrets, base64, fnmatch, PyKCS11
 from os import scandir
 from threading import Thread
 from cryptography import x509
@@ -147,6 +147,11 @@ def connAuctManSer():
                     size = sys.getsizeof(header + str(payload))
                     size += sys.getsizeof(size)
                     new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
+                elif id == 19:
+                    payload = auctionRepository.addKeys(message['AuctionId'], message['ClientKey'], message['AuctManKeys'])
+                    size = sys.getsizeof(header + str(payload))
+                    size += sys.getsizeof(size)
+                    new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
 
                 connstream.send(new_message)
                 print(connstream.version())
@@ -244,7 +249,7 @@ def connClient():
                         conn.sendall(new_message)
                         new_data = json.loads(receive(conn))
                         if new_data['Id'] == 202:
-                            nonce, requestEnc = encrypt(nonce, auctionRepository.placeBid(message['AuctionId'], message['Bid']))
+                            nonce, requestEnc = encrypt(nonce, auctionRepository.placeBid(new_data['AuctionId'], new_data['Bid']))
                             payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
                             size = sys.getsizeof(header + str(payload))
                             size += sys.getsizeof(size)
@@ -258,11 +263,6 @@ def connClient():
                     elif id == 14:
                         nonce, requestEnc = encrypt(nonce, auctionRepository.getChallenge(message['AuctionId']))
                         payload = json.dumps({ 'Message' : requestEnc, 'Nonce' : nonce })
-                        size = sys.getsizeof(header + str(payload))
-                        size += sys.getsizeof(size)
-                        new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
-                    elif id == 19:
-                        payload = auctionRepository.addKeys(message['AuctionId'], message['ClientKey'], message['AuctManKeys'])
                         size = sys.getsizeof(header + str(payload))
                         size += sys.getsizeof(size)
                         new_message = bytes('{}{}\r\n\r\n{}\r\n\r\n\r\n'.format(header, size, payload), 'utf-8')
