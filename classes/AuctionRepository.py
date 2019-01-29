@@ -84,7 +84,7 @@ class AuctionRepository:
                 challenge = {'Challenge' : challenge['Challenge'], 'Difficulty' : challenge['Difficulty'], 'Hash' : challenge['Hash']}
                
                 #Criar a assinatura do AuctionRep para aquele bloco
-                text_to_sign = bid.getSignature() + link + str(recvTime).encode() + json.dumps(challenge).encode()
+                text_to_sign = base64.b64decode(bid['Signature']) + link + str(recvTime).encode() + json.dumps(challenge).encode()
                 assin = self.key.sign(text_to_sign, self.padding, hashes.SHA256())
                 #Cria o bloco e adiciona à blockchain
                 block = Block(bid, recvTime, link, challenge, assin)
@@ -180,7 +180,7 @@ class AuctionRepository:
         digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
         response = bid['CriptAnswer']
         nonce = base64.b64decode(response['Nonce'])
-        digest.update(nonce.encode() + self.activeAuctions[auctionId].getLastBlock().getLink())
+        digest.update(nonce + self.activeAuctions[auctionId].getLastBlock().getLink())
         result =  digest.finalize()
         
         if result[0:self.difficulty] == b'0'*self.difficulty and result == base64.b64decode(response['Response']):
