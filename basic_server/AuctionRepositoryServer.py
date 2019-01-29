@@ -151,7 +151,7 @@ def connAuctManSer():
                 connstream.send(new_message)
                 print(connstream.version())
         except Exception:
-            print(traceback.format_exc())
+            print()
             bindsocket.close()
 
 def firstMessage(connstream, message):
@@ -282,7 +282,7 @@ def connClient():
                     connstream.send(new_message)
                     print("SENT")
             except Exception:
-                print(traceback.format_exc())
+                print()
                 connstream.close()
 
 def connAuctMan():
